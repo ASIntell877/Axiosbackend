@@ -15,3 +15,12 @@ mkey.txt
 # Ignore system files
 .DS_Store
 Thumbs.db
+
+# Ignore front end
+frontend/
+
+#ignore .env
+.env
+__pycache__/
+*.pyc
+
