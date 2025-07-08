@@ -56,3 +56,7 @@ async def chat(request: ChatRequest):
     except Exception as e:
         print(f"Exception: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+        # === responds to browsers CORS prelight check ===
+@app.options("/chat")
+async def preflight_chat():
+    return {"message": "CORS preflight passed"}
