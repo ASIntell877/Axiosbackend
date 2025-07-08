@@ -10,7 +10,7 @@ from app.chatbot import get_response  # your working logic
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://sdclfrontend.vercel.app/"],  # React dev server origin
+    allow_origins=["https://sdclfrontend.vercel.app"],  # React dev server origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
