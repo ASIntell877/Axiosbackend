@@ -51,4 +51,12 @@ async def chat(request: ChatRequest):
 # Optional: May not be necessary if CORSMiddleware handles preflight
 @app.options("/chat")
 async def preflight_chat():
-    return Response(status_code=200)
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "https://sdclfrontend.vercel.app",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+        }
+    )
+
