@@ -9,7 +9,7 @@ from app.chatbot import get_response
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://sdclfrontend.vercel.app"],
+    allow_origins=["https://axiosfrontend.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
