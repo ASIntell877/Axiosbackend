@@ -54,7 +54,7 @@ async def preflight_chat():
     return Response(
         status_code=200,
         headers={
-            "Access-Control-Allow-Origin": "https://sdclfrontend.vercel.app",
+            "Access-Control-Allow-Origin": "https://axiosfrontend.vercel.app",
             "Access-Control-Allow-Methods": "POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type",
         }
