@@ -17,6 +17,14 @@ API_KEYS = {
     "samuel": os.getenv("SAMUEL_API_KEY"),
 }
 
+# define verify_api_key to get xapi keys
+def verify_api_key(x_api_key: str = Header(...)):
+    if x_api_key not in API_KEYS.values():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API Key",
+        )
+    return x_api_key
 app = FastAPI()
 
 app.add_middleware(
