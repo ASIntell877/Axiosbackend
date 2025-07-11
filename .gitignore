@@ -24,3 +24,4 @@ frontend/
 __pycache__/
 *.pyc
 
+scripts/build_personality.py
