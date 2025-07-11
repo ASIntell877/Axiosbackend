@@ -5,6 +5,7 @@ from langchain_community.chat_message_histories.in_memory import ChatMessageHist
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from pinecone import Pinecone as PineconeClient
 from langchain_pinecone import PineconeVectorStore
+from app.redis_utils import get_persona
 
 from app.client_config import client_config
 
@@ -83,6 +84,7 @@ def get_qa_chain(config: dict):
     )
 
 # === debug for which client is received
+# === debug for which client is received
 def get_response(chat_id: str, question: str, client_id: str):
     print(f"\n--- Incoming request ---")
     print(f"client_id: {client_id}")
@@ -93,11 +95,22 @@ def get_response(chat_id: str, question: str, client_id: str):
     if not config:
         raise ValueError(f"Unknown client ID: {client_id}")
 
-    config["client_id"] = client_id  # MAKE SURE this is here
+    config["client_id"] = client_id  # MUST be passed to memory/session logic
+
+    # ✅ Check Redis for a custom persona for this client
+    redis_persona = get_persona(client_id)
+    if redis_persona:
+        print("⚙️ Dynamic persona loaded from Redis")
+        if "{context}" not in redis_persona or "{question}" not in redis_persona:
+            print("⚠️ Placeholders missing in Redis persona, appending defaults.")
+            redis_persona = redis_persona.strip() + "\n\nContext:\n{context}\n\nQuestion:\n{question}"
+        config["system_prompt"] = redis_persona
+    else:
+        print("📝 Using static system prompt from client_config")
 
     print(f"Using Pinecone index: {config['pinecone_index_name']}")
-    print(f"System prompt (first line): {config['system_prompt'].splitlines()[1]}")
-    
+    print(f"System prompt (first line): {config['system_prompt'].splitlines()[0]}")
+
     qa_chain = get_qa_chain(config)
     result = qa_chain.invoke(
         {"question": question},
