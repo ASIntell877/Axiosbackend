@@ -20,3 +20,12 @@ def save_chat_message(client_id, session_id, role, content):
 def get_chat_history(client_id, session_id):
     key = f"chat:{client_id}:{session_id}"
     return r.lrange(key, 0, -1)
+
+def append_to_persona(client_id, additional_text):
+    key = f"persona:{client_id}"
+    existing = r.get(key)
+    if existing is None:
+        updated = additional_text.strip()
+    else:
+        updated = existing.strip() + "\n\n" + additional_text.strip()
+    r.set(key, updated)

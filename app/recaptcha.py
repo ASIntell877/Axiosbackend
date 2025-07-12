@@ -1,7 +1,7 @@
 import httpx
 import os
 
-RECAPTCHA_SECRET = os.getenv("GOOGLE_RECAPTCHA_SECRET")
+RECAPTCHA_SECRET = os.getenv("RECAPTCHA_SECRET_KEY")
 
 async def verify_recaptcha(token: str) -> bool:
     url = "https://www.google.com/recaptcha/api/siteverify"
@@ -9,7 +9,15 @@ async def verify_recaptcha(token: str) -> bool:
         "secret": RECAPTCHA_SECRET,
         "response": token,
     }
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(url, data=data)
-        result = resp.json()
-    return result.get("success", False)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, data=data, timeout=5)
+            result = await resp.json()
+        
+        print("🔍 reCAPTCHA verification result:", result)  # Log the full response
+        
+        return result.get("success", False)
+    except Exception as e:
+        print("❌ Error verifying reCAPTCHA:", str(e))  # Log exceptions
+        return False
+
