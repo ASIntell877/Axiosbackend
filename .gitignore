@@ -25,3 +25,4 @@ __pycache__/
 *.pyc
 
 scripts/build_personality.py
+append_persona.py
