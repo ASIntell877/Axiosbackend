@@ -12,7 +12,7 @@ async def verify_recaptcha(token: str) -> bool:
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, data=data, timeout=5)
-            result = await resp.json()
+            result = resp.json()
         
         print("🔍 reCAPTCHA verification result:", result)  # Log the full response
         
