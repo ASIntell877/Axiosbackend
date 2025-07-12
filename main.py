@@ -4,6 +4,8 @@ load_dotenv()
 
 from fastapi import Depends, Header, FastAPI, HTTPException, Response, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx  # For proxy requests
 
@@ -126,14 +128,16 @@ async def proxy_chat(request: Request):
     if not api_key:
         raise HTTPException(status_code=400, detail="Unknown client")
 
-    headers = {
-        "Content-Type": "application/json",
-        "x-api-key": api_key,
-    }
+    try:
+        # Construct the request object from incoming JSON
+        chat_request = ChatRequest(**body)
 
-    async with httpx.AsyncClient() as client:
-        backend_url = os.getenv("SELF_API_BASE_URL", "https://sdcl-backend.onrender.com")
-        res = await client.post(f"{backend_url}/chat", headers=headers, json=body)
+        # ✅ Call internal `chat()` function directly
+        response_data = await chat(chat_request, api_key=api_key)
 
-        return Response(content=res.content, status_code=res.status_code)
+        # ✅ Return proper JSON response
+        return JSONResponse(content=jsonable_encoder(response_data), status_code=200)
 
+    except Exception as e:
+        print(f"Internal proxy error: {e}")
+        raise HTTPException(status_code=500, detail="Internal proxy error")
