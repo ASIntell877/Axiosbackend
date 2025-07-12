@@ -12,13 +12,30 @@ import httpx  # For proxy requests
 from app.chatbot import get_response
 from app.redis_utils import get_persona, save_chat_message
 from recaptcha import verify_recaptcha  # Your recaptcha verification function
+from ratelimit import check_rate_limit, track_usage
 
-# Load API keys securely from environment variables
+# Load API keys securely from environment variables and configure rate limits
 API_KEYS = {
-    "maximos": os.getenv("MAXIMOS_API_KEY"),
-    "ordinance": os.getenv("ORDINANCE_API_KEY"),
-    "marketingasst": os.getenv("MARKETINGASST_API_KEY"),
-    "samuel": os.getenv("SAMUEL_API_KEY"),
+    "maximos": {
+        "key": os.getenv("MAXIMOS_API_KEY"),
+        "max_requests": 20,       # 20 requests
+        "window_seconds": 60      # per 60 seconds
+    },
+    "ordinance": {
+        "key": os.getenv("ORDINANCE_API_KEY"),
+        "max_requests": 30,
+        "window_seconds": 60
+    },
+    "marketingasst": {
+        "key": os.getenv("MARKETINGASST_API_KEY"),
+        "max_requests": 40,
+        "window_seconds": 60
+    },
+    "samuel": {
+        "key": os.getenv("SAMUEL_API_KEY"),
+        "max_requests": 50,
+        "window_seconds": 60
+    },
 }
 
 # FastAPI app instance
@@ -40,12 +57,14 @@ app.add_middleware(
 
 # Dependency to validate x-api-key header on /chat endpoint
 def verify_api_key(x_api_key: str = Header(...)):
-    if x_api_key not in API_KEYS.values():
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API Key",
-        )
-    return x_api_key
+    for client, info in API_KEYS.items():
+        if info["key"] == x_api_key:
+            # Return the whole info dict plus client label for later use
+            return {"client": client, **info}
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or missing API Key",
+    )
 
 # Request model for /chat and proxy endpoint
 class ChatRequest(BaseModel):
@@ -62,24 +81,29 @@ def read_persona(client_id: str):
 
 # Internal chat endpoint — expects valid API key header
 @app.post("/chat")
-async def chat(request: ChatRequest, api_key: str = Depends(verify_api_key)):
+async def chat(request: ChatRequest, api_key_info: dict = Depends(verify_api_key)):
     try:
-        print(f"Received chat request: client_id={request.client_id}, chat_id={request.chat_id}, question={request.question}")
+        key = api_key_info["key"]
+        max_req = api_key_info.get("max_requests", 20)
+        window = api_key_info.get("window_seconds", 60)
 
-        # Call your chatbot logic
+        # Check rate limit with the correct key and limits
+        check_rate_limit(key, max_requests=max_req, window_seconds=window)
+        track_usage(key)
+
+        # Rest is your existing logic:
         result = get_response(
             chat_id=request.chat_id,
             question=request.question,
             client_id=request.client_id,
         )
 
+        print(f"Received chat request: client_id={request.client_id}, chat_id={request.chat_id}, question={request.question}")
         print(f"Response generated: answer preview={result['answer'][:100]}")
 
-        # Save conversation messages to Redis or wherever
         save_chat_message(request.client_id, request.chat_id, "user", request.question)
         save_chat_message(request.client_id, request.chat_id, "assistant", result["answer"])
 
-        # Return response + up to 300 chars of each source document
         return {
             "answer": result["answer"],
             "source_documents": [
@@ -91,12 +115,13 @@ async def chat(request: ChatRequest, api_key: str = Depends(verify_api_key)):
             ],
         }
 
-    except ValueError as e:
-        print(f"ValueError: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException as he:
+        # Re-raise HTTP errors like rate limiting
+        raise he
     except Exception as e:
         print(f"Exception: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
 
 # CORS preflight for /chat route
 @app.options("/chat")
@@ -124,16 +149,19 @@ async def proxy_chat(request: Request):
     if not await verify_recaptcha(recaptcha_token):
         raise HTTPException(status_code=403, detail="reCAPTCHA verification failed")
 
-    api_key = API_KEYS.get(client_id)
-    if not api_key:
+    api_key_info = API_KEYS.get(client_id)
+    if not api_key_info:
         raise HTTPException(status_code=400, detail="Unknown client")
+
+    api_key = api_key_info["key"]  # <-- Extract the actual key string here
 
     try:
         # Construct the request object from incoming JSON
         chat_request = ChatRequest(**body)
 
-        # ✅ Call internal `chat()` function directly
-        response_data = await chat(chat_request, api_key=api_key)
+        # ✅ Call internal `chat()` function with full api_key_info dict
+        # Since your chat expects dict with limits, pass the whole info
+        response_data = await chat(chat_request, api_key=api_key_info)
 
         # ✅ Return proper JSON response
         return JSONResponse(content=jsonable_encoder(response_data), status_code=200)
@@ -141,3 +169,4 @@ async def proxy_chat(request: Request):
     except Exception as e:
         print(f"Internal proxy error: {e}")
         raise HTTPException(status_code=500, detail="Internal proxy error")
+
