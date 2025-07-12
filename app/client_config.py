@@ -128,7 +128,7 @@ Question:
         "embedding_model": "text-embedding-3-small",
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
         "pinecone_api_key": os.getenv("PINECONE_API_KEY"),
-        "pinecone_index_name": os.getenv("PINECONE_INDEX_NAME"),
+        "pinecone_index_name": "samuelkelly",
         "gpt_model": "gpt-3.5-turbo",
     },
 }
