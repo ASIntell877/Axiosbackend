@@ -10,8 +10,13 @@ r = redis.from_url(redis_url, decode_responses=True)
 def get_persona(client_id):
     return r.get(f"persona:{client_id}")
 
-def set_persona(client_id, persona_prompt):
-    r.set(f"persona:{client_id}", persona_prompt)
+def set_persona_json(client_id, prompt, index=None, style=None):
+    persona_data = {
+        "prompt": prompt,
+        "index": index,
+        "style": style
+    }
+    r.set(f"persona:{client_id}", json.dumps(persona_data))
 
 def save_chat_message(client_id, session_id, role, content):
     key = f"chat:{client_id}:{session_id}"

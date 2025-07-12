@@ -99,12 +99,20 @@ def get_response(chat_id: str, question: str, client_id: str):
 
     # ✅ Check Redis for a custom persona for this client
     redis_persona = get_persona(client_id)
+
     if redis_persona:
         print("⚙️ Dynamic persona loaded from Redis")
-        if "{context}" not in redis_persona or "{question}" not in redis_persona:
+
+        if isinstance(redis_persona, dict):
+            prompt_text = redis_persona.get("prompt", "")
+        else:
+            prompt_text = redis_persona or ""
+
+        if "{context}" not in prompt_text or "{question}" not in prompt_text:
             print("⚠️ Placeholders missing in Redis persona, appending defaults.")
-            redis_persona = redis_persona.strip() + "\n\nContext:\n{context}\n\nQuestion:\n{question}"
-        config["system_prompt"] = redis_persona
+            prompt_text = prompt_text.strip() + "\n\nContext:\n{context}\n\nQuestion:\n{question}"
+
+        config["system_prompt"] = prompt_text
     else:
         print("📝 Using static system prompt from client_config")
 
