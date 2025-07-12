@@ -6,6 +6,8 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from pinecone import Pinecone as PineconeClient
 from langchain_pinecone import PineconeVectorStore
 from app.redis_utils import get_persona
+from openai import OpenAI
+import os
 
 from app.client_config import client_config
 
@@ -83,8 +85,8 @@ def get_qa_chain(config: dict):
         history_messages_key="chat_history"
     )
 
-# === debug for which client is received
-# === debug for which client is received
+# Call open AI, log token usage
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 def get_response(chat_id: str, question: str, client_id: str):
     print(f"\n--- Incoming request ---")
     print(f"client_id: {client_id}")
@@ -97,7 +99,6 @@ def get_response(chat_id: str, question: str, client_id: str):
 
     config["client_id"] = client_id  # MUST be passed to memory/session logic
 
-    # ✅ Check Redis for a custom persona for this client
     redis_persona = get_persona(client_id)
 
     if redis_persona:
@@ -116,25 +117,52 @@ def get_response(chat_id: str, question: str, client_id: str):
 
         config["system_prompt"] = prompt_text
 
-        # Override max_chunks if found in Redis persona
         if max_chunks is not None:
             print(f"⚙️ Overriding max_chunks to {max_chunks} from Redis persona")
             config["max_chunks"] = max_chunks
     else:
         print("📝 Using static system prompt from client_config")
 
-    # Fallback in case max_chunks is still missing
     if "max_chunks" not in config:
-        config["max_chunks"] = 5  # or your preferred default
+        config["max_chunks"] = 5  # your preferred default
 
     print(f"Using Pinecone index: {config['pinecone_index_name']}")
     print(f"System prompt (first line): {config['system_prompt'].splitlines()[0]}")
     print(f"Using max_chunks: {config['max_chunks']}")
 
+    # Call your existing chain:
     qa_chain = get_qa_chain(config)
     result = qa_chain.invoke(
         {"question": question},
         config={"configurable": {"session_id": chat_id}}
     )
-    return result
 
+    # --- New: Call OpenAI directly here to get token usage ---
+
+    # Prepare messages for openai call - adapt as needed for your prompts
+    messages = [
+        {"role": "system", "content": config["system_prompt"]},
+        {"role": "user", "content": question},
+    ]
+
+    # Call OpenAI chat completion directly
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        max_tokens=500,  # adjust as needed
+    )
+
+    # Extract answer & token usage
+    openai_answer = response.choices[0].message.content
+    usage = response.usage.total_tokens
+
+    print(f"OpenAI token usage for this request: {usage}")
+
+    # You can choose to:
+    # - return your original chain 'result' with added usage info
+    # - or replace answer with openai_answer if preferred
+
+    # Here, we'll just add token usage to your original result dict
+    result['token_usage'] = usage
+
+    return result

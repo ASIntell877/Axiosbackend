@@ -10,6 +10,7 @@ from fastapi import Query
 from ratelimit import r
 from datetime import datetime, timedelta
 from pydantic import BaseModel
+from app.redis_utils import increment_token_usage
 import httpx  # For proxy requests
 
 from app.chatbot import get_response
@@ -123,25 +124,33 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
         key = api_key_info["key"]
         max_req = api_key_info.get("max_requests", 20)
         window = api_key_info.get("window_seconds", 60)
+        monthly_limit = api_key_info.get("monthly_limit")
 
-        # Check rate limit with the correct key and limits
+        # Check per-minute rate limit
         check_rate_limit(key, max_requests=max_req, window_seconds=window)
-        monthly_limit = api_key_info.get("monthly_limit")  # Add to your config
-        track_usage(key, monthly_limit=monthly_limit)
 
-        # Chatbot logic
+        # Call main chatbot logic
         result = get_response(
             chat_id=request.chat_id,
             question=request.question,
             client_id=request.client_id,
         )
 
+        # Extract token usage from response if available
+        token_usage = result.get("token_usage", 0)
+
+        # Track usage in Redis (by request count and optionally by tokens)
+        track_usage(key, monthly_limit=monthly_limit, tokens=token_usage)
+
         print(f"Received chat request: client_id={request.client_id}, chat_id={request.chat_id}, question={request.question}")
         print(f"Response generated: answer preview={result['answer'][:100]}")
+        print(f"Token usage for this request: {token_usage}")
 
+        # Save messages to Redis history
         save_chat_message(request.client_id, request.chat_id, "user", request.question)
         save_chat_message(request.client_id, request.chat_id, "assistant", result["answer"])
 
+        # Return response as before
         return {
             "answer": result["answer"],
             "source_documents": [
@@ -151,14 +160,15 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
                 }
                 for doc in result.get("source_documents", [])
             ],
+            "token_usage": token_usage
         }
 
     except HTTPException as he:
-        # Re-raise HTTP errors like rate limiting
         raise he
     except Exception as e:
         print(f"Exception in process_chat: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
 
 # Internal chat endpoint — expects valid API key header
 @app.post("/chat")
