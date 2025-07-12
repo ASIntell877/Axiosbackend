@@ -9,7 +9,7 @@ import httpx  # For proxy requests
 
 from app.chatbot import get_response
 from app.redis_utils import get_persona, save_chat_message
-from app.recaptcha import verify_recaptcha  # Your recaptcha verification function
+from recaptcha import verify_recaptcha  # Your recaptcha verification function
 
 # Load API keys securely from environment variables
 API_KEYS = {
