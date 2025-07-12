@@ -79,9 +79,8 @@ def read_persona(client_id: str):
     prompt = get_persona(client_id)
     return {"client_id": client_id, "persona": prompt}
 
-# Internal chat endpoint — expects valid API key header
-@app.post("/chat")
-async def chat(request: ChatRequest, api_key_info: dict = Depends(verify_api_key)):
+# Core chat logic extracted to a reusable function
+async def process_chat(request: ChatRequest, api_key_info: dict):
     try:
         key = api_key_info["key"]
         max_req = api_key_info.get("max_requests", 20)
@@ -91,7 +90,7 @@ async def chat(request: ChatRequest, api_key_info: dict = Depends(verify_api_key
         check_rate_limit(key, max_requests=max_req, window_seconds=window)
         track_usage(key)
 
-        # Rest is your existing logic:
+        # Chatbot logic
         result = get_response(
             chat_id=request.chat_id,
             question=request.question,
@@ -119,9 +118,13 @@ async def chat(request: ChatRequest, api_key_info: dict = Depends(verify_api_key
         # Re-raise HTTP errors like rate limiting
         raise he
     except Exception as e:
-        print(f"Exception: {str(e)}")
+        print(f"Exception in process_chat: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
+# Internal chat endpoint — expects valid API key header
+@app.post("/chat")
+async def chat(request: ChatRequest, api_key_info: dict = Depends(verify_api_key)):
+    return await process_chat(request, api_key_info)
 
 # CORS preflight for /chat route
 @app.options("/chat")
@@ -153,20 +156,16 @@ async def proxy_chat(request: Request):
     if not api_key_info:
         raise HTTPException(status_code=400, detail="Unknown client")
 
-    api_key = api_key_info["key"]  # <-- Extract the actual key string here
-
     try:
         # Construct the request object from incoming JSON
         chat_request = ChatRequest(**body)
 
-        # ✅ Call internal `chat()` function with full api_key_info dict
-        # Since your chat expects dict with limits, pass the whole info
-        response_data = await chat(chat_request, api_key=api_key_info)
+        # Call the extracted process_chat function directly with api_key_info
+        response_data = await process_chat(chat_request, api_key_info)
 
-        # ✅ Return proper JSON response
+        # Return proper JSON response
         return JSONResponse(content=jsonable_encoder(response_data), status_code=200)
 
     except Exception as e:
         print(f"Internal proxy error: {e}")
         raise HTTPException(status_code=500, detail="Internal proxy error")
-
