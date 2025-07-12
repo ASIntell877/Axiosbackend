@@ -17,14 +17,6 @@ def get_persona(client_id):
     except json.JSONDecodeError:
         return {"prompt": raw}  # Fallback for legacy prompt-only string
 
-def set_persona_json(client_id, prompt, index="samuelkelly", style=None):
-    persona_data = {
-        "prompt": prompt,
-        "index": index,
-        "style": style
-    }
-    r.set(f"persona:{client_id}", json.dumps(persona_data))
-
 def save_chat_message(client_id, session_id, role, content):
     key = f"chat:{client_id}:{session_id}"
     r.rpush(key, f"{role}:{content}")
