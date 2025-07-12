@@ -27,3 +27,5 @@ __pycache__/
 scripts/build_personality.py
 append_persona.py
 redis_json_convert.py
+build_personality.py
+.env.txt
