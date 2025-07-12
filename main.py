@@ -6,6 +6,9 @@ from fastapi import Depends, Header, FastAPI, HTTPException, Response, status, R
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from fastapi import Query
+from ratelimit import r
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 import httpx  # For proxy requests
 
@@ -19,22 +22,26 @@ API_KEYS = {
     "maximos": {
         "key": os.getenv("MAXIMOS_API_KEY"),
         "max_requests": 20,       # 20 requests
-        "window_seconds": 60      # per 60 seconds
+        "window_seconds": 60,      # per 60 seconds
+        "monthly_limit": 1000     # monthly usage limit
     },
     "ordinance": {
         "key": os.getenv("ORDINANCE_API_KEY"),
         "max_requests": 30,
-        "window_seconds": 60
+        "window_seconds": 60,
+        "monthly_limit": 1000
     },
     "marketingasst": {
         "key": os.getenv("MARKETINGASST_API_KEY"),
         "max_requests": 40,
-        "window_seconds": 60
+        "window_seconds": 60,
+        "monthly_limit": 1000
     },
     "samuel": {
         "key": os.getenv("SAMUEL_API_KEY"),
         "max_requests": 50,
-        "window_seconds": 60
+        "window_seconds": 60,
+        "monthly_limit": 1000
     },
 }
 
@@ -79,6 +86,37 @@ def read_persona(client_id: str):
     prompt = get_persona(client_id)
     return {"client_id": client_id, "persona": prompt}
 
+# Admin endpoint to view daily + monthly usage
+@app.get("/admin/usage")
+def get_usage(client_id: str = Query(...)):
+    api_key_info = API_KEYS.get(client_id)
+    if not api_key_info:
+        raise HTTPException(status_code=400, detail="Unknown client_id")
+
+    api_key = api_key_info["key"]
+
+    # === DAILY USAGE ===
+    today = datetime.utcnow().date()
+    dates = [today - timedelta(days=i) for i in range(7)]  # Last 7 days
+    daily = {}
+
+    for date in dates:
+        key = f"usage:{api_key}:{date.isoformat()}"
+        count = r.get(key)
+        daily[date.isoformat()] = int(count) if count else 0
+
+    # === MONTHLY USAGE ===
+    quota_key = f"quota_usage:{api_key}"
+    quota_count = r.get(quota_key)
+    quota_ttl = r.ttl(quota_key)
+
+    return {
+        "client_id": client_id,
+        "daily_usage": daily,
+        "monthly_usage": int(quota_count) if quota_count else 0,
+        "resets_in_seconds": quota_ttl,
+    }
+
 # Core chat logic extracted to a reusable function
 async def process_chat(request: ChatRequest, api_key_info: dict):
     try:
@@ -88,7 +126,8 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
 
         # Check rate limit with the correct key and limits
         check_rate_limit(key, max_requests=max_req, window_seconds=window)
-        track_usage(key)
+        monthly_limit = api_key_info.get("monthly_limit")  # Add to your config
+        track_usage(key, monthly_limit=monthly_limit)
 
         # Chatbot logic
         result = get_response(
