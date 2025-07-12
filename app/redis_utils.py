@@ -1,6 +1,7 @@
 import os
 import redis
 import json
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -44,3 +45,11 @@ def append_to_persona(client_id, additional_text):
         except json.JSONDecodeError:
             updated = existing.strip() + "\n\n" + additional_text.strip()
             r.set(key, json.dumps({"prompt": updated}))
+
+def increment_token_usage(api_key: str, tokens: int):
+    if tokens <= 0:
+        return
+
+    date = time.strftime("%Y-%m-%d")
+    token_key = f"token_usage:{api_key}:{date}"
+    r.incrby(token_key, tokens)
