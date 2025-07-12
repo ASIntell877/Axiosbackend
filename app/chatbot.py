@@ -98,13 +98,14 @@ def get_response(chat_id: str, question: str, client_id: str):
     config["client_id"] = client_id  # MUST be passed to memory/session logic
 
     # ✅ Check Redis for a custom persona for this client
+    
     redis_persona = get_persona(client_id)
 
     if redis_persona:
         print("⚙️ Dynamic persona loaded from Redis")
 
         if isinstance(redis_persona, dict):
-            prompt_text = redis_persona.get("prompt", "")
+            prompt_text = redis_persona.get("prompt", "") or ""
         else:
             prompt_text = redis_persona or ""
 

@@ -1,5 +1,6 @@
 import os
 import redis
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,7 +9,13 @@ redis_url = os.getenv("REDIS_URL")
 r = redis.from_url(redis_url, decode_responses=True)
 
 def get_persona(client_id):
-    return r.get(f"persona:{client_id}")
+    raw = r.get(f"persona:{client_id}")
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)  # parse the JSON string into a dict
+    except json.JSONDecodeError:
+        return raw  # fallback to raw string for old format
 
 def set_persona_json(client_id, prompt, index=None, style=None):
     persona_data = {
