@@ -61,10 +61,6 @@ def read_persona(client_id: str):
 # Internal chat endpoint — expects valid API key header
 @app.post("/chat")
 async def chat(request: ChatRequest, api_key: str = Depends(verify_api_key)):
-    # Verify reCAPTCHA token from client request
-    if not await verify_recaptcha(request.recaptcha_token):
-        raise HTTPException(status_code=403, detail="Failed reCAPTCHA verification")
-
     try:
         print(f"Received chat request: client_id={request.client_id}, chat_id={request.chat_id}, question={request.question}")
 
