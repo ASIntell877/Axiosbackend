@@ -13,11 +13,11 @@ def get_persona(client_id):
     if raw is None:
         return None
     try:
-        return json.loads(raw)  # parse the JSON string into a dict
+        return json.loads(raw)  # Return dict with prompt/index/style
     except json.JSONDecodeError:
-        return raw  # fallback to raw string for old format
+        return {"prompt": raw}  # Fallback for legacy prompt-only string
 
-def set_persona_json(client_id, prompt, index=None, style=None):
+def set_persona_json(client_id, prompt, index="samuelkelly", style=None):
     persona_data = {
         "prompt": prompt,
         "index": index,
@@ -37,7 +37,18 @@ def append_to_persona(client_id, additional_text):
     key = f"persona:{client_id}"
     existing = r.get(key)
     if existing is None:
-        updated = additional_text.strip()
+        updated_prompt = additional_text.strip()
+        r.set(key, json.dumps({"prompt": updated_prompt}))
     else:
-        updated = existing.strip() + "\n\n" + additional_text.strip()
-    r.set(key, updated)
+        try:
+            parsed = json.loads(existing)
+            if isinstance(parsed, dict) and "prompt" in parsed:
+                parsed["prompt"] = parsed["prompt"].strip() + "\n\n" + additional_text.strip()
+                r.set(key, json.dumps(parsed))
+            else:
+                # fallback in case existing isn't a proper dict
+                updated = existing.strip() + "\n\n" + additional_text.strip()
+                r.set(key, json.dumps({"prompt": updated}))
+        except json.JSONDecodeError:
+            updated = existing.strip() + "\n\n" + additional_text.strip()
+            r.set(key, json.dumps({"prompt": updated}))
