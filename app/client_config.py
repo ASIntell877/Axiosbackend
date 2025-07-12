@@ -130,5 +130,6 @@ Question:
         "pinecone_api_key": os.getenv("PINECONE_API_KEY"),
         "pinecone_index_name": "samuelkelly",
         "gpt_model": "gpt-3.5-turbo",
-    },
+        "max_chunks": 5,  # or whatever default number you want here
+},
 }

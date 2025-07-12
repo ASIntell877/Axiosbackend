@@ -98,7 +98,6 @@ def get_response(chat_id: str, question: str, client_id: str):
     config["client_id"] = client_id  # MUST be passed to memory/session logic
 
     # ✅ Check Redis for a custom persona for this client
-    
     redis_persona = get_persona(client_id)
 
     if redis_persona:
@@ -106,19 +105,31 @@ def get_response(chat_id: str, question: str, client_id: str):
 
         if isinstance(redis_persona, dict):
             prompt_text = redis_persona.get("prompt", "") or ""
+            max_chunks = redis_persona.get("max_chunks")
         else:
             prompt_text = redis_persona or ""
+            max_chunks = None
 
         if "{context}" not in prompt_text or "{question}" not in prompt_text:
             print("⚠️ Placeholders missing in Redis persona, appending defaults.")
             prompt_text = prompt_text.strip() + "\n\nContext:\n{context}\n\nQuestion:\n{question}"
 
         config["system_prompt"] = prompt_text
+
+        # Override max_chunks if found in Redis persona
+        if max_chunks is not None:
+            print(f"⚙️ Overriding max_chunks to {max_chunks} from Redis persona")
+            config["max_chunks"] = max_chunks
     else:
         print("📝 Using static system prompt from client_config")
 
+    # Fallback in case max_chunks is still missing
+    if "max_chunks" not in config:
+        config["max_chunks"] = 5  # or your preferred default
+
     print(f"Using Pinecone index: {config['pinecone_index_name']}")
     print(f"System prompt (first line): {config['system_prompt'].splitlines()[0]}")
+    print(f"Using max_chunks: {config['max_chunks']}")
 
     qa_chain = get_qa_chain(config)
     result = qa_chain.invoke(
@@ -126,3 +137,4 @@ def get_response(chat_id: str, question: str, client_id: str):
         config={"configurable": {"session_id": chat_id}}
     )
     return result
+

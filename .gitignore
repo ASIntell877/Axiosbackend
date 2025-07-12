@@ -29,3 +29,5 @@ append_persona.py
 redis_json_convert.py
 build_personality.py
 .env.txt
+scripts/check_persona_format.py
+scripts/append_max_chunks.py
