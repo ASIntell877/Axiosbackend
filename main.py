@@ -117,6 +117,21 @@ def get_usage(client_id: str = Query(...)):
         "monthly_usage": int(quota_count) if quota_count else 0,
         "resets_in_seconds": quota_ttl,
     }
+# admin endpoint to view token usage by xpai
+@app.get("/admin/token-usage")
+def get_token_usage(client_id: str = Query(...)):
+    api_key_info = API_KEYS.get(client_id)
+    if not api_key_info:
+        raise HTTPException(status_code=400, detail="Unknown client_id")
+
+    api_key = api_key_info["key"]
+    key = f"token_usage:{api_key}"
+    count = r.get(key)
+
+    return {
+        "client_id": client_id,
+        "monthly_tokens": int(count) if count else 0
+    }
 
 # Core chat logic extracted to a reusable function
 async def process_chat(request: ChatRequest, api_key_info: dict):
