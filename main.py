@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import Depends, Header, FastAPI, HTTPException, Response, status, Request
+from fastapi import Depends, Header, FastAPI, HTTPException, Response, status, Request, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
@@ -15,6 +15,7 @@ import httpx  # For proxy requests
 
 from app.chatbot import get_response
 from app.redis_utils import get_persona, save_chat_message
+from app.redis_utils import get_token_usage
 from recaptcha import verify_recaptcha  # Your recaptcha verification function
 from ratelimit import check_rate_limit, track_usage
 
@@ -119,18 +120,21 @@ def get_usage(client_id: str = Query(...)):
     }
 # admin endpoint to view token usage by xpai
 @app.get("/admin/token-usage")
-def get_token_usage(client_id: str = Query(...)):
+def get_token_usage_endpoint(client_id: str = Query(...)):
     api_key_info = API_KEYS.get(client_id)
     if not api_key_info:
         raise HTTPException(status_code=400, detail="Unknown client_id")
 
     api_key = api_key_info["key"]
-    key = f"token_usage:{api_key}"
-    count = r.get(key)
+
+    try:
+        usage_data = get_token_usage(api_key)  # Returns dict with detailed usage
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch token usage: {str(e)}")
 
     return {
         "client_id": client_id,
-        "monthly_tokens": int(count) if count else 0
+        "token_usage": usage_data  # Full detailed dict: today, monthly, total, per model
     }
 
 # Core chat logic extracted to a reusable function

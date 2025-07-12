@@ -5,7 +5,7 @@ from langchain_community.chat_message_histories.in_memory import ChatMessageHist
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from pinecone import Pinecone as PineconeClient
 from langchain_pinecone import PineconeVectorStore
-from app.redis_utils import get_persona
+from app.redis_utils import get_persona, increment_token_usage
 from openai import OpenAI
 import os
 
@@ -63,7 +63,8 @@ def get_qa_chain(config: dict):
         model_name=config["gpt_model"],
         temperature=0.7,
         max_tokens=700,
-        openai_api_key=config["openai_api_key"]
+        openai_api_key=config["openai_api_key"],
+        streaming=False  # important for accessing `.usage`
     )
 
     # Build the base ConversationalRetrievalChain using LangChain
@@ -86,7 +87,6 @@ def get_qa_chain(config: dict):
     )
 
 # Call open AI, log token usage
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 def get_response(chat_id: str, question: str, client_id: str):
     print(f"\n--- Incoming request ---")
     print(f"client_id: {client_id}")
@@ -130,39 +130,26 @@ def get_response(chat_id: str, question: str, client_id: str):
     print(f"System prompt (first line): {config['system_prompt'].splitlines()[0]}")
     print(f"Using max_chunks: {config['max_chunks']}")
 
-    # Call your existing chain:
+    # Call the LangChain QA chain
     qa_chain = get_qa_chain(config)
     result = qa_chain.invoke(
         {"question": question},
         config={"configurable": {"session_id": chat_id}}
     )
 
-    # --- New: Call OpenAI directly here to get token usage ---
+    # ✅ Attempt to extract token usage from LangChain metadata
+    token_usage = result.get("response_metadata", {}).get("token_usage")
+    if token_usage is not None:
+        print(f"✅ LangChain token usage: {token_usage} tokens")
+        result["token_usage"] = token_usage
 
-    # Prepare messages for openai call - adapt as needed for your prompts
-    messages = [
-        {"role": "system", "content": config["system_prompt"]},
-        {"role": "user", "content": question},
-    ]
-
-    # Call OpenAI chat completion directly
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=messages,
-        max_tokens=500,  # adjust as needed
-    )
-
-    # Extract answer & token usage
-    openai_answer = response.choices[0].message.content
-    usage = response.usage.total_tokens
-
-    print(f"OpenAI token usage for this request: {usage}")
-
-    # You can choose to:
-    # - return your original chain 'result' with added usage info
-    # - or replace answer with openai_answer if preferred
-
-    # Here, we'll just add token usage to your original result dict
-    result['token_usage'] = usage
+        # Log usage to Redis
+        increment_token_usage(
+            api_key=client_id,
+            token_count=token_usage,
+            model=config["gpt_model"]
+        )
+    else:
+        print("⚠️ Token usage not found in response metadata. Consider updating LangChain.")
 
     return result

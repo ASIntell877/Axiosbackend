@@ -46,10 +46,54 @@ def append_to_persona(client_id, additional_text):
             updated = existing.strip() + "\n\n" + additional_text.strip()
             r.set(key, json.dumps({"prompt": updated}))
 
-def increment_token_usage(api_key: str, tokens: int):
-    if tokens <= 0:
-        return
+def increment_token_usage(api_key: str, token_count: int, model: str = "unknown"):
+    """
+    Tracks token usage for a given API key in Redis.
+    Includes daily, monthly, and model-specific usage.
+    """
+    today = time.strftime("%Y-%m-%d")
+    month = time.strftime("%Y-%m")
 
-    date = time.strftime("%Y-%m-%d")
-    token_key = f"token_usage:{api_key}:{date}"
-    r.incrby(token_key, tokens)
+    # 🔹 Keys we'll update
+    total_key = f"token_usage:{api_key}:total"
+    daily_key = f"token_usage:{api_key}:daily:{today}"
+    monthly_key = f"token_usage:{api_key}:monthly:{month}"
+    model_key = f"token_usage:{api_key}:model:{model}"
+
+    # 🔹 Increment all counters
+    r.incrby(total_key, token_count)
+    r.incrby(daily_key, token_count)
+    r.incrby(monthly_key, token_count)
+    r.incrby(model_key, token_count)
+
+    # 🔹 Optionally: set expiry for daily + monthly keys
+    r.expire(daily_key, 60 * 60 * 24 * 31)
+    r.expire(monthly_key, 60 * 60 * 24 * 365)
+
+def get_token_usage(api_key: str):
+    today = time.strftime("%Y-%m-%d")
+    month = time.strftime("%Y-%m")
+
+    total_key = f"token_usage:{api_key}:total"
+    daily_key = f"token_usage:{api_key}:daily:{today}"
+    monthly_key = f"token_usage:{api_key}:monthly:{month}"
+
+    # Fetch totals safely (default to 0 if none)
+    total = int(r.get(total_key) or 0)
+    daily = int(r.get(daily_key) or 0)
+    monthly = int(r.get(monthly_key) or 0)
+
+    # Fetch per-model usage keys dynamically
+    model_prefix = f"token_usage:{api_key}:model:"
+    model_tokens = {}
+    for key in r.scan_iter(match=f"{model_prefix}*"):
+        model_name = key[len(model_prefix):]
+        count = int(r.get(key) or 0)
+        model_tokens[model_name] = count
+
+    return {
+        "total_tokens": total,
+        "daily_tokens": daily,
+        "monthly_tokens": monthly,
+        "per_model_tokens": model_tokens
+    }
