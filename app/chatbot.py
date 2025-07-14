@@ -1,5 +1,5 @@
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.callbacks import get_openai_callback
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.prompts import PromptTemplate
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
@@ -140,8 +140,8 @@ def get_response(chat_id: str, question: str, client_id: str):
         )
 
         # Access token usage and cost from the callback
-        token_usage = callback.token_usage
-        cost_estimation = callback.cost
+        token_usage = callback.total_tokens
+        cost_estimation = callback.total_cost
 
         print(f"✅ LangChain token usage: {token_usage} tokens")
         print(f"💰 Estimated cost: ${cost_estimation:.4f}")
