@@ -137,6 +137,9 @@ def get_response(chat_id: str, question: str, client_id: str):
         config={"configurable": {"session_id": chat_id}}
     )
 
+    # Log the entire response metadata for debugging purposes
+    print(f"Result metadata: {result.get('response_metadata', {})}")
+
     # ✅ Attempt to extract token usage from LangChain metadata
     token_usage = result.get("response_metadata", {}).get("token_usage")
     if token_usage is not None:

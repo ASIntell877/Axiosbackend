@@ -121,6 +121,8 @@ def get_usage(client_id: str = Query(...)):
 # admin endpoint to view token usage by xpai
 @app.get("/admin/token-usage")
 def get_token_usage_endpoint(client_id: str = Query(...)):
+     # Debugging: Log client_id to verify it's received correctly
+    print(f"Received request for client_id: {client_id}")
     api_key_info = API_KEYS.get(client_id)
     if not api_key_info:
         raise HTTPException(status_code=400, detail="Unknown client_id")
@@ -128,8 +130,12 @@ def get_token_usage_endpoint(client_id: str = Query(...)):
     api_key = api_key_info["key"]
 
     try:
+        # Debugging: Log the API key and client before attempting to fetch usage
+        print(f"Fetching token usage for api_key: {api_key}")
         usage_data = get_token_usage(api_key)  # Returns dict with detailed usage
     except Exception as e:
+        # Debugging: Log any errors during token usage retrieval
+        print(f"Error fetching token usage for {client_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch token usage: {str(e)}")
 
     return {
