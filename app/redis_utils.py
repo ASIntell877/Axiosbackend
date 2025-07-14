@@ -20,11 +20,14 @@ def get_persona(client_id):
 
 def save_chat_message(client_id, session_id, role, content):
     key = f"chat:{client_id}:{session_id}"
-    r.rpush(key, f"{role}:{content}")
+    entry = json.dumps({"role": role, "content": content})
+    r.rpush(key, entry)
+
 
 def get_chat_history(client_id, session_id):
     key = f"chat:{client_id}:{session_id}"
-    return r.lrange(key, 0, -1)
+    raw_history = r.lrange(key, 0, -1)
+    return [json.loads(entry) for entry in raw_history]
 
 def append_to_persona(client_id, additional_text):
     key = f"persona:{client_id}"
