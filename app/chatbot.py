@@ -1,4 +1,5 @@
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain.callbacks import get_openai_callback
 from langchain.chains import ConversationalRetrievalChain
 from langchain.prompts import PromptTemplate
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
@@ -28,8 +29,6 @@ def get_memory(chat_id: str, client_id: str):
     if key not in memory_store:
         memory_store[key] = ChatMessageHistory()
     return memory_store[key]
-
-
 
 def get_qa_chain(config: dict):
     """
@@ -87,7 +86,7 @@ def get_qa_chain(config: dict):
         history_messages_key="chat_history"
     )
 
-# Call open AI, log token usage
+# Call OpenAI, log token usage
 def get_response(chat_id: str, question: str, client_id: str):
     print(f"\n--- Incoming request ---")
     print(f"client_id: {client_id}")
@@ -131,21 +130,21 @@ def get_response(chat_id: str, question: str, client_id: str):
     print(f"System prompt (first line): {config['system_prompt'].splitlines()[0]}")
     print(f"Using max_chunks: {config['max_chunks']}")
 
-    # Call the LangChain QA chain
-    qa_chain = get_qa_chain(config)
-    result = qa_chain.invoke(
-        {"question": question},
-        config={"configurable": {"session_id": chat_id}}
-    )
+    # Using get_openai_callback context manager for automatic token tracking
+    with get_openai_callback() as callback:
+        # Call the LangChain QA chain
+        qa_chain = get_qa_chain(config)
+        result = qa_chain.invoke(
+            {"question": question},
+            config={"configurable": {"session_id": chat_id}}
+        )
 
-    # Log the entire response metadata for debugging purposes
-    print(f"Result metadata: {result.get('response_metadata', {})}")
+        # Access token usage and cost from the callback
+        token_usage = callback.token_usage
+        cost_estimation = callback.cost
 
-    # ✅ Attempt to extract token usage from LangChain metadata
-    token_usage = result.get("response_metadata", {}).get("token_usage")
-    if token_usage is not None:
         print(f"✅ LangChain token usage: {token_usage} tokens")
-        result["token_usage"] = token_usage
+        print(f"💰 Estimated cost: ${cost_estimation:.4f}")
 
         # Log usage to Redis
         increment_token_usage(
@@ -153,7 +152,8 @@ def get_response(chat_id: str, question: str, client_id: str):
             token_count=token_usage,
             model=config["gpt_model"]
         )
-    else:
-        print("⚠️ Token usage not found in response metadata. Consider updating LangChain.")
+
+        result["token_usage"] = token_usage
+        result["cost_estimation"] = cost_estimation
 
     return result
