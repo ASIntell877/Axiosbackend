@@ -64,7 +64,8 @@ def get_qa_chain(config: dict):
         temperature=0.7,
         max_tokens=700,
         openai_api_key=config["openai_api_key"],
-        streaming=False  # important for accessing `.usage`
+        streaming=True,          # Enable streaming
+        stream_usage=True        # Enable token usage tracking
     )
 
     # Build the base ConversationalRetrievalChain using LangChain
