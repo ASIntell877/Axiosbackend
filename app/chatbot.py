@@ -140,8 +140,8 @@ def get_response(chat_id: str, question: str, client_id: str):
         )
 
         # Access token usage and cost from the callback
-        token_usage = callback.total_tokens
-        cost_estimation = callback.total_cost
+        token_usage = callback.total_tokens  # Correct way to access total tokens
+        cost_estimation = callback.total_cost  # Correct way to access cost
 
         print(f"✅ LangChain token usage: {token_usage} tokens")
         print(f"💰 Estimated cost: ${cost_estimation:.4f}")

@@ -161,20 +161,6 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
             client_id=request.client_id,
         )
 
-        # Extract token usage from response if available
-        token_usage = result.get("token_usage", 0)
-
-        # Track usage in Redis (by request count and optionally by tokens)
-        track_usage(key, monthly_limit=monthly_limit, tokens=token_usage)
-
-        print(f"Received chat request: client_id={request.client_id}, chat_id={request.chat_id}, question={request.question}")
-        print(f"Response generated: answer preview={result['answer'][:100]}")
-        print(f"Token usage for this request: {token_usage}")
-
-        # Save messages to Redis history
-        save_chat_message(request.client_id, request.chat_id, "user", request.question)
-        save_chat_message(request.client_id, request.chat_id, "assistant", result["answer"])
-
         # Return response as before
         return {
             "answer": result["answer"],
@@ -185,7 +171,6 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
                 }
                 for doc in result.get("source_documents", [])
             ],
-            "token_usage": token_usage
         }
 
     except HTTPException as he:

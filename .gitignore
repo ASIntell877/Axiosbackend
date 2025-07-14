@@ -32,3 +32,6 @@ build_personality.py
 scripts/check_persona_format.py
 scripts/append_max_chunks.py
 opai_token_usage.py
+store_chat_firebase.py
+import_firebase.py
+/Secrets
