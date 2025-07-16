@@ -8,6 +8,8 @@ from pinecone import Pinecone as PineconeClient
 from langchain_pinecone import PineconeVectorStore
 from app.redis_utils import get_persona, increment_token_usage
 from openai import OpenAI
+from firebase_admin import firestore
+from store_chat_firebase import save_memory, get_memory
 import os
 
 from app.client_config import client_config
@@ -24,11 +26,58 @@ def get_prompt_template(system_prompt_str: str):
 # This keeps track of past chat messages per session.
 memory_store = {}
 
+# Function to check if memory is enabled for a client
+def is_memory_enabled(client_id: str) -> bool:
+    """
+    Check if chat memory is enabled for a particular client.
+    You could replace this with logic to query your Firestore or a config file.
+    """
+    client_memory_config = {
+        "client_id_1": True,  # Memory enabled for client 1
+        "client_id_2": False,  # Memory disabled for client 2
+    }
+    return client_memory_config.get(client_id, False)  # Default to False if client not found
+
 def get_memory(chat_id: str, client_id: str):
-    key = f"{client_id}:{chat_id}"
-    if key not in memory_store:
-        memory_store[key] = ChatMessageHistory()
-    return memory_store[key]
+    """Retrieve chat history from Firestore or in-memory store."""
+    if is_memory_enabled(client_id):
+        # If memory is enabled, fetch chat history from Firestore
+        return get_firebase_memory(client_id, chat_id)
+    else:
+        # If memory is not enabled, use in-memory store
+        key = f"{client_id}:{chat_id}"
+        if key not in memory_store:
+            memory_store[key] = []  # Initialize an empty list for new sessions
+        return memory_store[key]
+
+def save_memory(client_id: str, chat_id: str, chat_history: list):
+    """Save chat history to Firestore or in-memory store."""
+    if is_memory_enabled(client_id):
+        # If memory is enabled, save to Firestore
+        save_firebase_memory(client_id, chat_id, chat_history)
+    else:
+        # If memory is not enabled, store in memory
+        key = f"{client_id}:{chat_id}"
+        memory_store[key] = chat_history
+
+def get_firebase_memory(client_id: str, chat_id: str):
+    """Retrieve chat memory from Firestore."""
+    db = firestore.client()
+    doc_ref = db.collection("chat_memory").document(f"{client_id}_{chat_id}")
+    doc = doc_ref.get()
+    if doc.exists:
+        return doc.to_dict().get("history", [])
+    else:
+        return []  # Return an empty list if no memory found
+
+def save_firebase_memory(client_id: str, chat_id: str, chat_history: list):
+    """Save chat memory to Firestore."""
+    db = firestore.client()
+    doc_ref = db.collection("chat_memory").document(f"{client_id}_{chat_id}")
+    doc_ref.set({
+        "history": chat_history
+    })
+    print(f"Saved memory for session {chat_id} for client {client_id} to Firestore.")
 
 def get_qa_chain(config: dict):
     """
@@ -98,7 +147,13 @@ def get_response(chat_id: str, question: str, client_id: str):
         raise ValueError(f"Unknown client ID: {client_id}")
 
     config["client_id"] = client_id  # MUST be passed to memory/session logic
-
+    if is_memory_enabled(client_id):
+        print("Chat memory is enabled for this client.")
+        chat_history = get_memory(chat_id, client_id)  # Retrieve previous chat history
+    else:
+        print("Chat memory is disabled for this client.")
+        chat_history = []  # No history for this client
+        
     redis_persona = get_persona(client_id)
 
     if redis_persona:

@@ -12,8 +12,11 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 from app.redis_utils import increment_token_usage
 import httpx  # For proxy requests
-
+from store_chat_firebase import delete_memory
+from datetime import datetime, timedelta
+from app.redis_utils import get_last_seen, set_last_seen
 from app.chatbot import get_response
+from app.chatbot import get_memory, save_memory, is_memory_enabled
 from app.redis_utils import get_persona, save_chat_message
 from app.redis_utils import get_token_usage
 from recaptcha import verify_recaptcha  # Your recaptcha verification function
@@ -143,8 +146,22 @@ def get_token_usage_endpoint(client_id: str = Query(...)):
         "token_usage": usage_data  # Full detailed dict: today, monthly, total, per model
     }
 
+
 # Core chat logic extracted to a reusable function
+SESSION_TIMEOUT = timedelta(minutes=30)
+
 async def process_chat(request: ChatRequest, api_key_info: dict):
+    client_id = request.client_id
+    chat_id   = request.chat_id
+
+    # --- Auto‑expire logic ---
+    now = datetime.utcnow()
+    last = get_last_seen(client_id, chat_id)
+    if last and (now - last) > SESSION_TIMEOUT:
+        delete_memory(client_id, chat_id)
+    set_last_seen(client_id, chat_id, now)
+    # ---------------------------
+
     try:
         key = api_key_info["key"]
         max_req = api_key_info.get("max_requests", 20)
@@ -154,21 +171,31 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
         # Check per-minute rate limit
         check_rate_limit(key, max_requests=max_req, window_seconds=window)
 
+        # Retrieve or initialize chat history
+        if is_memory_enabled(client_id):
+            chat_history = get_memory(chat_id, client_id)
+        else:
+            chat_history = []
+
         # Call main chatbot logic
         result = get_response(
-            chat_id=request.chat_id,
+            chat_id=chat_id,
             question=request.question,
-            client_id=request.client_id,
+            client_id=client_id,
         )
 
-        # Return response as before
+        # Save updated history if memory is enabled
+        if is_memory_enabled(client_id):
+            chat_history.append({"message": request.question, "sender": "user"})
+            chat_history.append({"message": result["answer"],  "sender": "bot"})
+            save_memory(client_id, chat_id, chat_history)
+
+        # Return the response
         return {
             "answer": result["answer"],
             "source_documents": [
-                {
-                    "source": doc.metadata.get("source", "unknown"),
-                    "text": doc.page_content[:300],
-                }
+                {"source": doc.metadata.get("source","unknown"),
+                 "text": doc.page_content[:300]}
                 for doc in result.get("source_documents", [])
             ],
         }
@@ -176,13 +203,15 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
     except HTTPException as he:
         raise he
     except Exception as e:
-        print(f"Exception in process_chat: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+        print(f"Exception in process_chat: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+
 
 
 # Internal chat endpoint — expects valid API key header
 @app.post("/chat")
 async def chat(request: ChatRequest, api_key_info: dict = Depends(verify_api_key)):
+    print(f"Processing chat for client_id: {request.client_id}, chat_id: {request.chat_id}") #debug/logging to verify memory behavior is functioning
     return await process_chat(request, api_key_info)
 
 # CORS preflight for /chat route
@@ -228,3 +257,4 @@ async def proxy_chat(request: Request):
     except Exception as e:
         print(f"Internal proxy error: {e}")
         raise HTTPException(status_code=500, detail="Internal proxy error")
+    

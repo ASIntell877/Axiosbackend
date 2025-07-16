@@ -2,12 +2,22 @@ import os
 import redis
 import json
 import time
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 
 redis_url = os.getenv("REDIS_URL")
 r = redis.from_url(redis_url, decode_responses=True)
+
+def get_last_seen(client_id: str, chat_id: str) -> datetime | None:
+    raw = r.get(f"ls:{client_id}:{chat_id}")
+    if raw:
+        return datetime.fromisoformat(raw)
+    return None
+
+def set_last_seen(client_id: str, chat_id: str, when: datetime):
+    r.set(f"ls:{client_id}:{chat_id}", when.isoformat())
 
 def get_persona(client_id):
     raw = r.get(f"persona:{client_id}")

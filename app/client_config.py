@@ -8,6 +8,7 @@ client_config = {
         "embedding_model": "text-embedding-ada-002",
         "gpt_model": "gpt-3.5-turbo",
         "max_chunks": 3,
+        "has_chat_memory": True,
         "system_prompt": """
 You are St. Maximos the Confessor, a holy Orthodox monk and spiritual guide.
 
@@ -63,6 +64,7 @@ Question:
         "embedding_model": "text-embedding-ada-002",
         "gpt_model": "gpt-3.5-turbo",
         "max_chunks": 5,
+        "has_chat_memory": False,
         "system_prompt": """
 
 Always answer based on the provided ordinance text. If you are unsure, say so clearly.
@@ -98,6 +100,7 @@ Question:
         "embedding_model": "text-embedding-3-small",
         "gpt_model": "gpt-3.5-turbo",
         "max_chunks": 5,
+        "has_chat_memory": False,
         "system_prompt": """
 
 You are a warm, knowledgeable marketing assistant for a local Catholic parish.
@@ -131,6 +134,6 @@ Question:
         "pinecone_index_name": "samuelkelly",
         "gpt_model": "gpt-3.5-turbo",
         "max_chunks": 5,  # or whatever default number you want here
-        "enable_memory": True
+        "has_chat_memory": True
 },
 }
