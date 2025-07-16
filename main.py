@@ -132,7 +132,7 @@ def get_token_usage_endpoint(client_id: str = Query(...)):
     try:
         # Debugging: Log the API key and client before attempting to fetch usage
         print(f"Fetching token usage for api_key: {api_key}")
-        usage_data = get_token_usage(api_key)  # Returns dict with detailed usage
+        usage_data = get_token_usage(client_id)  # Returns dict with detailed usage
     except Exception as e:
         # Debugging: Log any errors during token usage retrieval
         print(f"Error fetching token usage for {client_id}: {str(e)}")

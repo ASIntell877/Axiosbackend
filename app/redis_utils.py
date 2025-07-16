@@ -56,12 +56,15 @@ def increment_token_usage(api_key: str, token_count: int, model: str = "unknown"
     """
     today = time.strftime("%Y-%m-%d")
     month = time.strftime("%Y-%m")
+    print(f"Incrementing token usage for {api_key}: {token_count} tokens")
+    
 
     # 🔹 Keys we'll update
     total_key = f"token_usage:{api_key}:total"
     daily_key = f"token_usage:{api_key}:daily:{today}"
     monthly_key = f"token_usage:{api_key}:monthly:{month}"
     model_key = f"token_usage:{api_key}:model:{model}"
+    print(f"Updating Redis keys: {total_key}, {daily_key}, {monthly_key}, {model_key}")
 
     # 🔹 Increment all counters
     r.incrby(total_key, token_count)
@@ -85,6 +88,7 @@ def get_token_usage(api_key: str):
     total = int(r.get(total_key) or 0)
     daily = int(r.get(daily_key) or 0)
     monthly = int(r.get(monthly_key) or 0)
+    print(f"Fetching token usage for {api_key}: {total_key}, {daily_key}, {monthly_key}")
 
     # Fetch per-model usage keys dynamically
     model_prefix = f"token_usage:{api_key}:model:"
