@@ -50,6 +50,12 @@ API_KEYS = {
         "window_seconds": 60,
         "monthly_limit": 1000
     },
+        "prairiepastorate": {
+        "key": os.getenv("PRAPASTORATE_API_KEY"),
+        "max_requests": 50,
+        "window_seconds": 60,
+        "monthly_limit": 1000
+    },
 }
 
 # FastAPI app instance
