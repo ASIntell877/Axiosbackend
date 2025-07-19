@@ -218,8 +218,6 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
 
         # Save updated history if memory is enabled
         if is_memory_enabled(client_id):
-            chat_history.add_user_message(request.question)
-            chat_history.add_ai_message(result["answer"])
             save_memory(client_id, chat_id, chat_history)
 
         # Return the response
