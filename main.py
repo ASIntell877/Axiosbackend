@@ -158,6 +158,30 @@ def get_token_usage_endpoint(client_id: str = Query(...)):
 # Core chat logic extracted to a reusable function
 SESSION_TIMEOUT = timedelta(minutes=30)
 
+@app.get("/history")
+async def get_history(
+    client_id: str = Query(..., description="Which client/pastorate"),
+    chat_id:   str = Query(..., description="The chat session ID")
+):
+    """
+    Return the saved chat messages (as {role, text}) for this client_id + chat_id.
+    """
+    # Only return memory if this client has memory enabled
+    if not is_memory_enabled(client_id):
+        return {"history": []}
+
+    # Retrieve your LangChain ChatMessageHistory
+    history_obj = get_memory(chat_id, client_id)
+
+    # Convert each LangChain BaseMessage into {role, text}
+    msgs = []
+    for msg in history_obj.messages:
+        # msg.type is "ai" or "human"
+        role = "assistant" if msg.type == "ai" else "user"
+        msgs.append({"role": role, "text": msg.content})
+
+    return {"history": msgs}
+
 async def process_chat(request: ChatRequest, api_key_info: dict):
     client_id = request.client_id
     chat_id   = request.chat_id
