@@ -189,7 +189,9 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
     # --- Auto‑expire logic ---
     now = datetime.utcnow()
     last = get_last_seen(client_id, chat_id)
-    if last and (now - last) > SESSION_TIMEOUT:
+    if last is None:
+        delete_memory(client_id, chat_id)
+    elif (now - last) > SESSION_TIMEOUT:
         delete_memory(client_id, chat_id)
     set_last_seen(client_id, chat_id, now)
     # ---------------------------

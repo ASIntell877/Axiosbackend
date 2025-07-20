@@ -12,6 +12,7 @@ from openai import OpenAI
 import import_firebase
 from firebase_admin import firestore
 import os
+from datetime import datetime, timedelta
 
 from app.client_config import client_config
 
@@ -26,6 +27,16 @@ def get_prompt_template(system_prompt_str: str):
 # === In-memory message history store ===
 # This keeps track of past chat messages per session.
 memory_store: dict[str, ChatMessageHistory] = {}
+memory_timestamps: dict[str, datetime] = {}
+SESSION_TIMEOUT = timedelta(minutes=30)
+
+def prune_memory_store() -> None:
+    """Remove expired in-memory chat sessions."""
+    now = datetime.utcnow()
+    expired = [k for k, ts in memory_timestamps.items() if now - ts > SESSION_TIMEOUT]
+    for k in expired:
+        memory_store.pop(k, None)
+        memory_timestamps.pop(k, None)
 
 # Function to check if memory is enabled for a client
 def is_memory_enabled(client_id: str) -> bool:
@@ -38,10 +49,12 @@ def get_memory(chat_id: str, client_id: str) -> ChatMessageHistory:
         # If memory is enabled, fetch chat history from Firestore
         return get_firebase_memory(client_id, chat_id)
     else:
-        # If memory is not enabled, use in-memory store
+        # Prune memory store
+        prune_memory_store()
         key = f"{client_id}:{chat_id}"
         if key not in memory_store:
             memory_store[key] = ChatMessageHistory()
+        memory_timestamps[key] = datetime.utcnow()
         return memory_store[key]
 
 def save_memory(client_id: str, chat_id: str, chat_history: ChatMessageHistory):
@@ -50,9 +63,11 @@ def save_memory(client_id: str, chat_id: str, chat_history: ChatMessageHistory):
         # If memory is enabled, save to Firestore
         save_firebase_memory(client_id, chat_id, chat_history)
     else:
-        # If memory is not enabled, store in memory
+        # Prune memory store
+        prune_memory_store()
         key = f"{client_id}:{chat_id}"
         memory_store[key] = chat_history
+        memory_timestamps[key] = datetime.utcnow()
 
 def get_firebase_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
     """Retrieve chat memory from Firestore."""

@@ -2,7 +2,7 @@ import os
 import redis
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,8 +16,10 @@ def get_last_seen(client_id: str, chat_id: str) -> datetime | None:
         return datetime.fromisoformat(raw)
     return None
 
+SESSION_TIMEOUT = timedelta(minutes=30)
 def set_last_seen(client_id: str, chat_id: str, when: datetime):
-    r.set(f"ls:{client_id}:{chat_id}", when.isoformat())
+    ttl_seconds = int(SESSION_TIMEOUT.total_seconds())
+    r.setex(f"ls:{client_id}:{chat_id}", ttl_seconds, when.isoformat())
 
 def get_persona(client_id):
     raw = r.get(f"persona:{client_id}")
