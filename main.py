@@ -62,9 +62,7 @@ API_KEYS = {
 app = FastAPI()
 
 # Allowed frontend origins (adjust as needed)
-ALLOWED_ORIGINS = [
-    "https://axiosfrontend.vercel.app",
-]
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").split(",")
 
 # CORS Middleware to allow cross-origin calls from frontend
 app.add_middleware(
