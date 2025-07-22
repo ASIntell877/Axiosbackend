@@ -17,7 +17,7 @@ from store_chat_firebase import delete_memory
 from datetime import datetime, timedelta
 from app.redis_utils import get_last_seen, set_last_seen
 from app.chatbot import get_response
-from app.chatbot import get_memory, save_memory, is_memory_enabled
+from app.chatbot import get_memory, save_firebase_memory, is_memory_enabled
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from app.redis_utils import get_persona, save_chat_message
 from app.redis_utils import get_token_usage
@@ -220,7 +220,7 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
         if is_memory_enabled(client_id):
             chat_history.add_user_message(request.question)
             chat_history.add_ai_message(result["answer"])
-            save_memory(client_id, chat_id, chat_history)
+            save_firebase_memory(client_id, chat_id, chat_history)
 
         # Return the response
         return {

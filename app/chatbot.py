@@ -12,7 +12,9 @@ from openai import OpenAI
 import import_firebase
 from firebase_admin import firestore
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+
 
 from app.client_config import client_config
 
@@ -62,12 +64,12 @@ def save_firebase_memory(client_id: str, chat_id: str, chat_history: ChatMessage
     db = firestore.client()
     doc_ref = db.collection("chat_memory").document(f"{client_id}_{chat_id}")
 
-    # Set expiration timestamp 30 minutes from now (UTC)
+    # Set expiration timestamp 30 minutes from now (UTC with tz info)
     expiry_time = datetime.now(timezone.utc) + timedelta(minutes=30)
 
     doc_ref.set({
         "history": messages_to_dict(chat_history.messages),
-        "timestamp_expires": expiry_time  # <- Required for Firestore TTL
+        "timestamp_expires": expiry_time
     })
     print(f"Saved memory for session {chat_id} for client {client_id} to Firestore.")
 
@@ -81,15 +83,6 @@ def get_firebase_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
         stored = doc.to_dict().get("history", [])
         history.messages = messages_from_dict(stored)
     return history
-
-def save_firebase_memory(client_id: str, chat_id: str, chat_history: ChatMessageHistory):
-    """Save chat memory to Firestore."""
-    db = firestore.client()
-    doc_ref = db.collection("chat_memory").document(f"{client_id}_{chat_id}")
-    doc_ref.set({
-        "history": messages_to_dict(chat_history.messages)
-    })
-    print(f"Saved memory for session {chat_id} for client {client_id} to Firestore.")
 
 def get_qa_chain(config: dict):
     """
