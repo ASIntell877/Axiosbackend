@@ -57,17 +57,19 @@ def get_memory(chat_id: str, client_id: str) -> ChatMessageHistory:
         memory_timestamps[key] = datetime.utcnow()
         return memory_store[key]
 
-def save_memory(client_id: str, chat_id: str, chat_history: ChatMessageHistory):
-    """Save chat history to Firestore or in-memory store."""
-    if is_memory_enabled(client_id):
-        # If memory is enabled, save to Firestore
-        save_firebase_memory(client_id, chat_id, chat_history)
-    else:
-        # Prune memory store
-        prune_memory_store()
-        key = f"{client_id}:{chat_id}"
-        memory_store[key] = chat_history
-        memory_timestamps[key] = datetime.utcnow()
+def save_firebase_memory(client_id: str, chat_id: str, chat_history: ChatMessageHistory):
+    """Save chat memory to Firestore and add TTL timestamp."""
+    db = firestore.client()
+    doc_ref = db.collection("chat_memory").document(f"{client_id}_{chat_id}")
+
+    # Set expiration timestamp 30 minutes from now (UTC)
+    expiry_time = datetime.now(timezone.utc) + timedelta(minutes=30)
+
+    doc_ref.set({
+        "history": messages_to_dict(chat_history.messages),
+        "timestamp_expires": expiry_time  # <- Required for Firestore TTL
+    })
+    print(f"Saved memory for session {chat_id} for client {client_id} to Firestore.")
 
 def get_firebase_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
     """Retrieve chat memory from Firestore."""
