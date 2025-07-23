@@ -81,6 +81,11 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 
+# Ensure a provided client_id is known
+def validate_client_id(client_id: str) -> None:
+    if client_id not in API_KEYS:
+        raise HTTPException(status_code=400, detail="Unknown client")
+
 # Dependency to validate x-api-key header on /chat endpoint
 def verify_api_key(x_api_key: str = Header(...)):
     if x_api_key == ADMIN_API_KEY:
@@ -109,6 +114,7 @@ def read_persona(
     client_id: str,
     api_key_info: dict = Depends(verify_api_key),
 ):
+    validate_client_id(client_id)
     if api_key_info["client"] not in ("admin", client_id):
         raise HTTPException(403, "Forbidden")
     prompt = get_persona(client_id)
@@ -120,10 +126,18 @@ def get_usage(
     client_id: str = Query(...),
     api_key_info: dict = Depends(verify_api_key),
 ):
+    """Return daily and monthly usage for the given client_id.
+
+    Raises a 400 error if the client_id does not exist in ``API_KEYS``.
+    """
+    validate_client_id(client_id)
     if api_key_info["client"] != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    api_key = api_key_info["key"]
+    info = API_KEYS.get(client_id)
+    if info is None:
+        raise HTTPException(status_code=400, detail="Unknown client_id")
+    api_key = info["key"]
 
     # === DAILY USAGE ===
     today = datetime.utcnow().date()
@@ -152,6 +166,7 @@ def get_token_usage_endpoint(
     client_id: str = Query(...),
     api_key_info: dict = Depends(verify_api_key),
 ):
+    validate_client_id(client_id)
     if api_key_info["client"] != "admin":
         raise HTTPException(403, "Forbidden")
 
@@ -184,6 +199,7 @@ async def get_history(
     """
     Return the saved chat messages (as {role, text}) for this client_id + chat_id.
     """
+    validate_client_id(client_id)
     caller = api_key_info["client"]
 
     # 1) Admins can fetch any history
@@ -217,6 +233,8 @@ async def get_history(
 async def process_chat(request: ChatRequest, api_key_info: dict):
     client_id = request.client_id
     chat_id   = request.chat_id
+
+    validate_client_id(client_id)
 
     # --- Auto‑expire logic ---
     now = datetime.utcnow()
@@ -292,7 +310,15 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
 # Internal chat endpoint — expects valid API key header
 @app.post("/chat")
 async def chat(request: ChatRequest, api_key_info: dict = Depends(verify_api_key)):
+    validate_client_id(request.client_id)
+    #admins can't impersonate clients
+    if api_key_info["client"] == "admin":
+        raise HTTPException(403, "Admins may not call /chat")
+    # Clients only hit their own client_id
+    if api_key_info["client"] != request.client_id:
+        raise HTTPException(403, "Forbidden: key does not match client_id")
     print(f"Processing chat for client_id: {request.client_id}, chat_id: {request.chat_id}") #debug/logging to verify memory behavior is functioning
+    
     return await process_chat(request, api_key_info)
 
 # CORS preflight for /chat route
@@ -322,10 +348,11 @@ async def proxy_chat(request: Request):
     if not await verify_recaptcha(recaptcha_token):
         raise HTTPException(status_code=403, detail="reCAPTCHA verification failed")
 
-    api_key_info = API_KEYS.get(client_id)
-    if not api_key_info:
+    info = API_KEYS.get(client_id)
+    if not info:
         raise HTTPException(status_code=400, detail="Unknown client")
-
+    
+    api_key_info = {"client": client_id, **info}
     try:
         # Construct the request object from incoming JSON
         chat_request = ChatRequest(**body)
