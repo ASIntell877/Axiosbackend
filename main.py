@@ -333,8 +333,7 @@ async def preflight_chat():
         },
     )
 
-# Public proxy endpoint: frontend calls here without API key,
-# backend validates recaptcha and injects API key when calling internal /chat
+# Proxy endpoint - public IP limiter - recaptcha verifications
 @limiter.limit("30/minute")
 @app.post("/proxy-chat")
 async def proxy_chat(request: Request):
