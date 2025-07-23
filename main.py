@@ -14,7 +14,6 @@ from app.redis_utils import increment_token_usage
 import httpx  # For proxy requests
 import import_firebase
 from store_chat_firebase import delete_memory
-from datetime import datetime, timedelta
 from app.redis_utils import get_last_seen, set_last_seen
 from app.chatbot import get_response
 from app.chatbot import get_memory, save_firebase_memory, is_memory_enabled
@@ -23,6 +22,11 @@ from app.redis_utils import get_persona, save_chat_message
 from app.redis_utils import get_token_usage
 from recaptcha import verify_recaptcha  # Your recaptcha verification function
 from ratelimit import check_rate_limit, track_usage
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
+
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 
 # Load API keys securely from environment variables and configure rate limits
 API_KEYS = {
@@ -73,12 +77,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
 # Dependency to validate x-api-key header on /chat endpoint
 def verify_api_key(x_api_key: str = Header(...)):
+    if x_api_key == ADMIN_API_KEY:
+        return {"client": "admin", "key": x_api_key}
+
+    # 2) check regular clients
     for client, info in API_KEYS.items():
         if info["key"] == x_api_key:
-            # Return the whole info dict plus client label for later use
             return {"client": client, **info}
+
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or missing API Key",
@@ -93,16 +105,23 @@ class ChatRequest(BaseModel):
 
 # Get persona info endpoint
 @app.get("/persona/{client_id}")
-def read_persona(client_id: str):
+def read_persona(
+    client_id: str,
+    api_key_info: dict = Depends(verify_api_key),
+):
+    if api_key_info["client"] not in ("admin", client_id):
+        raise HTTPException(403, "Forbidden")
     prompt = get_persona(client_id)
     return {"client_id": client_id, "persona": prompt}
 
 # Admin endpoint to view daily + monthly usage
 @app.get("/admin/usage")
-def get_usage(client_id: str = Query(...)):
-    api_key_info = API_KEYS.get(client_id)
-    if not api_key_info:
-        raise HTTPException(status_code=400, detail="Unknown client_id")
+def get_usage(
+    client_id: str = Query(...),
+    api_key_info: dict = Depends(verify_api_key),
+):
+    if api_key_info["client"] != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     api_key = api_key_info["key"]
 
@@ -129,12 +148,12 @@ def get_usage(client_id: str = Query(...)):
     }
 # admin endpoint to view token usage by xpai
 @app.get("/admin/token-usage")
-def get_token_usage_endpoint(client_id: str = Query(...)):
-     # Debugging: Log client_id to verify it's received correctly
-    print(f"Received request for client_id: {client_id}")
-    api_key_info = API_KEYS.get(client_id)
-    if not api_key_info:
-        raise HTTPException(status_code=400, detail="Unknown client_id")
+def get_token_usage_endpoint(
+    client_id: str = Query(...),
+    api_key_info: dict = Depends(verify_api_key),
+):
+    if api_key_info["client"] != "admin":
+        raise HTTPException(403, "Forbidden")
 
     api_key = api_key_info["key"]
 
@@ -158,13 +177,30 @@ SESSION_TIMEOUT = timedelta(minutes=30)
 
 @app.get("/history")
 async def get_history(
-    client_id: str = Query(..., description="Which client/pastorate"),
-    chat_id:   str = Query(..., description="The chat session ID")
+     client_id: str = Query(..., description="Which client/pastorate"),
+     chat_id:   str = Query(..., description="The chat session ID"),
+     api_key_info: dict = Depends(verify_api_key),
 ):
     """
     Return the saved chat messages (as {role, text}) for this client_id + chat_id.
     """
-    # Only return memory if this client has memory enabled
+    caller = api_key_info["client"]
+
+    # 1) Admins can fetch any history
+    if caller == "admin":
+        pass
+
+    # 2) Clients may only fetch their own history
+    elif caller == client_id:
+        pass
+
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: you can only access your own history"
+        )
+
+    # Safe to read memory
     if not is_memory_enabled(client_id):
         return {"history": []}
 
@@ -172,12 +208,10 @@ async def get_history(
     history_obj = get_memory(chat_id, client_id)
 
     # Convert each LangChain BaseMessage into {role, text}
-    msgs = []
-    for msg in history_obj.messages:
-        # msg.type is "ai" or "human"
-        role = "assistant" if msg.type == "ai" else "user"
-        msgs.append({"role": role, "text": msg.content})
-
+    msgs = [
+        {"role": "assistant" if m.type=="ai" else "user", "text": m.content}
+        for m in history_obj.messages
+    ]
     return {"history": msgs}
 
 async def process_chat(request: ChatRequest, api_key_info: dict):
@@ -200,8 +234,23 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
         window = api_key_info.get("window_seconds", 60)
         monthly_limit = api_key_info.get("monthly_limit")
 
-        # Check per-minute rate limit
-        check_rate_limit(key, max_requests=max_req, window_seconds=window)
+        # Rate‑limit checks 
+        check_rate_limit(
+            key,
+            max_requests=max_req,
+            window_seconds=window,
+        )
+
+        # Monthly quota enforcement
+        used = int(r.get(f"quota_usage:{key}") or 0)
+        if monthly_limit and used >= monthly_limit:
+            raise HTTPException(
+                status_code=429,
+                detail="Monthly quota exceeded"
+            )
+
+        #  Record this request against the quota
+        track_usage(key)
 
         # Retrieve or initialize chat history
         if is_memory_enabled(client_id):
@@ -260,6 +309,7 @@ async def preflight_chat():
 
 # Public proxy endpoint: frontend calls here without API key,
 # backend validates recaptcha and injects API key when calling internal /chat
+@limiter.limit("30/minute")
 @app.post("/proxy-chat")
 async def proxy_chat(request: Request):
     body = await request.json()
