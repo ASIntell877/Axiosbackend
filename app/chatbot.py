@@ -85,14 +85,19 @@ def get_firebase_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
     return history
 
 def get_qa_chain(config: dict):
-    """
-    Builds and returns the QA chain (ConversationalRetrievalChain) for the client.
+    """Create the retrieval QA chain for a client.
 
-    Args:
-        config (dict): Client-specific configuration dictionary.
+    Parameters
+    ----------
+    config : dict
+        Client specific configuration.
 
-    Returns:
-        RunnableWithMessageHistory: A runnable chain that maintains chat history.
+    Returns
+    -------
+    tuple
+        ``(qa_chain, retriever)`` where ``qa_chain`` is a
+        :class:`RunnableWithMessageHistory` instance and ``retriever`` is the
+        underlying retriever used by the chain.
     """
 
     # Create the prompt template using client-specific system prompt
@@ -122,6 +127,7 @@ def get_qa_chain(config: dict):
     )
 
     # Build the base ConversationalRetrievalChain using LangChain
+    retriever=retriever,
     base_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
         retriever=vectorstore.as_retriever(search_kwargs={"k": config["max_chunks"]}),
@@ -133,12 +139,14 @@ def get_qa_chain(config: dict):
     )
 
     # Wrap the chain with message memory, using client ID to separate sessions
-    return RunnableWithMessageHistory(
+    qa_with_history = RunnableWithMessageHistory(
         base_chain,
         lambda session_id: get_memory(session_id, config["client_id"]),
         input_messages_key="question",
         history_messages_key="chat_history"
     )
+
+    return qa_with_history, retriever
 
 # Call OpenAI, log token usage
 def get_response(chat_id: str, question: str, client_id: str, allow_fallback: bool = False):
@@ -193,8 +201,7 @@ def get_response(chat_id: str, question: str, client_id: str, allow_fallback: bo
     # Using get_openai_callback context manager for automatic token tracking
     with get_openai_callback() as callback:
         # Call the LangChain QA chain
-        qa_chain = get_qa_chain(config)
-        retriever = qa_chain.chain.retriever
+        qa_chain, retriever = get_qa_chain(config)
         retrieved_docs = retriever.get_relevant_documents(question)
 
         if not retrieved_docs:
