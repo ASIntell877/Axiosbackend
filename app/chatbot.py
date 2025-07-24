@@ -127,7 +127,7 @@ def get_qa_chain(config: dict):
     )
 
     # Build the base ConversationalRetrievalChain using LangChain
-    retriever=vectorstore.as_retriever(search_kwargs={"k": config["max_chunks"]}),
+    retriever=vectorstore.as_retriever(search_kwargs={"k": config["max_chunks"]})
     base_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
         retriever=retriever,
