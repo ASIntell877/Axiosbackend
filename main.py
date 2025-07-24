@@ -32,7 +32,7 @@ ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 # Get client configuration from client_config
 def get_client_by_api_key(api_key: str):
     for client_id, config in CLIENT_CONFIG.items():
-        if config.get("api_key") == api_key:
+        if config.get("key") == api_key:
             return client_id, config
     return None, None
 
@@ -116,7 +116,7 @@ def get_usage(
     info = CLIENT_CONFIG.get(client_id)
     if info is None:
         raise HTTPException(status_code=400, detail="Unknown client_id")
-    api_key = info["api_key"]
+    api_key = info["key"]
 
     # === DAILY USAGE ===
     today = datetime.utcnow().date()

@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 
 
-from app.client_config import client_config
+from app.client_config import CLIENT_CONFIG
 
 # === This pulls client specific system prompts from client_config
 def get_prompt_template(system_prompt_str: str):
@@ -43,7 +43,7 @@ def prune_memory_store() -> None:
 # Function to check if memory is enabled for a client
 def is_memory_enabled(client_id: str) -> bool:
     """Return True if chat memory is enabled for the client."""
-    return client_config.get(client_id, {}).get("has_chat_memory", False)
+    return CLIENT_CONFIG.get(client_id, {}).get("has_chat_memory", False)
 
 def get_memory(chat_id: str, client_id: str) -> ChatMessageHistory:
     """Retrieve chat history from Firestore or in-memory store."""
@@ -147,7 +147,7 @@ def get_response(chat_id: str, question: str, client_id: str, allow_fallback: bo
     print(f"chat_id: {chat_id}")
     print(f"question: {question}")
 
-    config = client_config.get(client_id)
+    config = CLIENT_CONFIG.get(client_id)
     if not config:
         raise ValueError(f"Unknown client ID: {client_id}")
 
@@ -181,7 +181,7 @@ def get_response(chat_id: str, question: str, client_id: str, allow_fallback: bo
             print(f"⚙️ Overriding max_chunks to {max_chunks} from Redis persona")
             config["max_chunks"] = max_chunks
     else:
-        print("📝 Using static system prompt from client_config")
+        print("📝 Using static system prompt from CLIENT_CONFIG")
 
     if "max_chunks" not in config:
         config["max_chunks"] = 5  # your preferred default
