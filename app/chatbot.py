@@ -141,7 +141,7 @@ def get_qa_chain(config: dict):
     )
 
 # Call OpenAI, log token usage
-def get_response(chat_id: str, question: str, client_id: str):
+def get_response(chat_id: str, question: str, client_id: str, allow_fallback: bool = False):
     print(f"\n--- Incoming request ---")
     print(f"client_id: {client_id}")
     print(f"chat_id: {chat_id}")
@@ -194,10 +194,27 @@ def get_response(chat_id: str, question: str, client_id: str):
     with get_openai_callback() as callback:
         # Call the LangChain QA chain
         qa_chain = get_qa_chain(config)
+        retriever = qa_chain.chain.retriever
+        retrieved_docs = retriever.get_relevant_documents(question)
+
+        if not retrieved_docs:
+            print("⚠️ No relevant documents found in vector index.")
+            if not allow_fallback:
+                print("🔒 Fallback disabled. Returning default no-answer response.")
+                return {
+                    "answer": "No relevant information was found in the index. Please contact a staff member for help.",
+                    "source_documents": [],
+                    "token_usage": 0,
+                    "cost_estimation": 0.0
+                }
+            else:
+                print("⚠️ Fallback allowed. Proceeding with general GPT response.")
+
         result = qa_chain.invoke(
             {"question": question},
             config={"configurable": {"session_id": chat_id}}
         )
+        result["source_documents"] = retrieved_docs  # ✅ Ensure docs are returned
 
         # Access token usage and cost from the callback
         token_usage = callback.total_tokens  # Correct way to access total tokens

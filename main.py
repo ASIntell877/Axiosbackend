@@ -17,6 +17,7 @@ from store_chat_firebase import delete_memory
 from app.redis_utils import get_last_seen, set_last_seen
 from app.chatbot import get_response
 from app.chatbot import get_memory, save_firebase_memory, is_memory_enabled
+from app.client_config import CLIENT_CONFIG
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from app.redis_utils import get_persona, save_chat_message
 from app.redis_utils import get_token_usage
@@ -28,39 +29,12 @@ from slowapi.middleware import SlowAPIMiddleware
 
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 
-# Load API keys securely from environment variables and configure rate limits
-API_KEYS = {
-    "maximos": {
-        "key": os.getenv("MAXIMOS_API_KEY"),
-        "max_requests": 20,       # 20 requests
-        "window_seconds": 60,      # per 60 seconds
-        "monthly_limit": 1000     # monthly usage limit
-    },
-    "ordinance": {
-        "key": os.getenv("ORDINANCE_API_KEY"),
-        "max_requests": 30,
-        "window_seconds": 60,
-        "monthly_limit": 1000
-    },
-    "marketingasst": {
-        "key": os.getenv("MARKETINGASST_API_KEY"),
-        "max_requests": 40,
-        "window_seconds": 60,
-        "monthly_limit": 1000
-    },
-    "samuel": {
-        "key": os.getenv("SAMUEL_API_KEY"),
-        "max_requests": 50,
-        "window_seconds": 60,
-        "monthly_limit": 1000
-    },
-        "prairiepastorate": {
-        "key": os.getenv("PRAPASTORATE_API_KEY"),
-        "max_requests": 50,
-        "window_seconds": 60,
-        "monthly_limit": 1000
-    },
-}
+# Get client configuration from client_config
+def get_client_by_api_key(api_key: str):
+    for client_id, config in CLIENT_CONFIG.items():
+        if config.get("api_key") == api_key:
+            return client_id, config
+    return None, None
 
 # FastAPI app instance
 app = FastAPI()
@@ -83,7 +57,7 @@ app.add_middleware(SlowAPIMiddleware)
 
 # Ensure a provided client_id is known
 def validate_client_id(client_id: str) -> None:
-    if client_id not in API_KEYS:
+    if client_id not in CLIENT_CONFIG:
         raise HTTPException(status_code=400, detail="Unknown client")
 
 # Dependency to validate x-api-key header on /chat endpoint
@@ -91,10 +65,15 @@ def verify_api_key(x_api_key: str = Header(...)):
     if x_api_key == ADMIN_API_KEY:
         return {"client": "admin", "key": x_api_key}
 
-    # 2) check regular clients
-    for client, info in API_KEYS.items():
-        if info["key"] == x_api_key:
-            return {"client": client, **info}
+    client_id, config = get_client_by_api_key(x_api_key)
+    if client_id and config:
+        return {
+            "client": client_id,
+            "key": x_api_key,
+            "max_requests": config.get("max_requests", 20),
+            "window_seconds": config.get("window_seconds", 60),
+            "monthly_limit": config.get("monthly_limit", 1000)
+        }
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -134,10 +113,10 @@ def get_usage(
     if api_key_info["client"] != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    info = API_KEYS.get(client_id)
+    info = CLIENT_CONFIG.get(client_id)
     if info is None:
         raise HTTPException(status_code=400, detail="Unknown client_id")
-    api_key = info["key"]
+    api_key = info["api_key"]
 
     # === DAILY USAGE ===
     today = datetime.utcnow().date()
@@ -236,6 +215,11 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
 
     validate_client_id(client_id)
 
+    #---Check whether gpt fallback is allowed for client, default to false for strict indexing only
+    client_settings = CLIENT_CONFIG.get(client_id, {})
+    allow_fallback = client_settings.get("allow_gpt_fallback", False)
+    print(f"[Chat] client_id: {client_id} | allow_fallback: {allow_fallback}") #log whether fallback allowed
+
     # --- Auto‑expire logic ---
     now = datetime.utcnow()
     last = get_last_seen(client_id, chat_id)
@@ -281,6 +265,7 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
             chat_id=chat_id,
             question=request.question,
             client_id=client_id,
+            allow_fallback=allow_fallback  # GPT fallback passed here
         )
 
         # Save updated history if memory is enabled
@@ -347,7 +332,7 @@ async def proxy_chat(request: Request):
     if not await verify_recaptcha(recaptcha_token):
         raise HTTPException(status_code=403, detail="reCAPTCHA verification failed")
 
-    info = API_KEYS.get(client_id)
+    info = CLIENT_CONFIG.get(client_id)
     if not info:
         raise HTTPException(status_code=400, detail="Unknown client")
     

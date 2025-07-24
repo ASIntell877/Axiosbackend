@@ -1,14 +1,19 @@
 import os
 
-client_config = {
+CLIENT_CONFIG = {
     "maximos": {
         "pinecone_api_key": os.getenv("PINECONE_API_KEY"),
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
+        "key": os.getenv("MAXIMOS_API_KEY"),
+        "max_requests": 20,       # 20 requests
+        "window_seconds": 60,      # per 60 seconds
+        "monthly_limit": 1000,    # monthly usage limit
         "pinecone_index_name": "maximos",
         "embedding_model": "text-embedding-ada-002",
         "gpt_model": "gpt-3.5-turbo",
         "max_chunks": 3,
         "has_chat_memory": True,
+        "allow_gpt_fallback": True,
         "system_prompt": """
 You are St. Maximos the Confessor, a holy Orthodox monk and spiritual guide.
 
@@ -56,11 +61,16 @@ Question:
     "ordinance": {
         "pinecone_api_key": os.getenv("PINECONE_API_KEY"), # === you'll want to change these to client specific keys references after testing, at lest for openAI
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
+        "key": os.getenv("ORDINANCE_API_KEY"),
+        "max_requests": 30,
+        "window_seconds": 60,
+        "monthly_limit": 1000,
         "pinecone_index_name": "ordinance",
         "embedding_model": "text-embedding-ada-002",
         "gpt_model": "gpt-3.5-turbo",
         "max_chunks": 5,
         "has_chat_memory": False,
+        "allow_gpt_fallback": False,
         "system_prompt": """
 
 Always answer based on the provided ordinance text. If you are unsure, say so clearly.
@@ -92,11 +102,16 @@ Question:
     "marketingasst": {
         "pinecone_api_key": os.getenv("PINECONE_API_KEY"), # === you'll want to change these to client specific keys references after testing, at lest for openAI
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
+        "key": os.getenv("MARKETINGASST_API_KEY"),
+        "max_requests": 40,
+        "window_seconds": 60,
+        "monthly_limit": 1000,
         "pinecone_index_name": "parishioners",
         "embedding_model": "text-embedding-3-small",
         "gpt_model": "gpt-3.5-turbo",
         "max_chunks": 5,
         "has_chat_memory": False,
+        "allow_gpt_fallback": True,
         "system_prompt": """
 
 You are a warm, knowledgeable marketing assistant for a local Catholic parish.
@@ -127,20 +142,30 @@ Question:
         "embedding_model": "text-embedding-3-small",
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
         "pinecone_api_key": os.getenv("PINECONE_API_KEY"),
+        "key": os.getenv("SAMUEL_API_KEY"),
+        "max_requests": 50,
+        "window_seconds": 60,
+        "monthly_limit": 1000,
         "pinecone_index_name": "samuelkelly",
         "gpt_model": "gpt-3.5-turbo",
         "max_chunks": 5,  # or whatever default number you want here
-        "has_chat_memory": True
+        "has_chat_memory": True,
+        "allow_gpt_fallback": True,
 },
 
     "prairiepastorate": {
         "pinecone_api_key": os.getenv("PINECONE_API_KEY"), # === you'll want to change these to client specific keys references after testing, at lest for openAI
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
+        "key": os.getenv("PRAPASTORATE_API_KEY"),
+        "max_requests": 50,
+        "window_seconds": 60,
+        "monthly_limit": 1000,
         "pinecone_index_name": "pastorate",
         "embedding_model": "text-embedding-3-small",
         "gpt_model": "gpt-3.5-turbo",
         "max_chunks": 5,
         "has_chat_memory": True,
+        "allow_gpt_fallback": True,
         "system_prompt": """
 
 ## Identity
