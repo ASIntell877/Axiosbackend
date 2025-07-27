@@ -39,3 +39,7 @@ scripts/chunk_text_past.py
 scripts/chunk_text_sitemap.py
 scripts/embed_upsert_past.py
 scripts/generate_secrect_key.py
+app/test_app.py
+scripts/chunk_text_ordinance.py
+scripts/embed_upsert_ordinance.py
+scripts/replace_word.py
