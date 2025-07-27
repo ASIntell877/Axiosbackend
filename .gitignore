@@ -43,3 +43,4 @@ app/test_app.py
 scripts/chunk_text_ordinance.py
 scripts/embed_upsert_ordinance.py
 scripts/replace_word.py
+check_redis_prompts.py

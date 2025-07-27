@@ -116,3 +116,12 @@ def get_token_usage(api_key: str):
         "monthly_tokens": monthly,
         "per_model_tokens": model_tokens
     }
+
+def set_persona(client_id: str, prompt: str):
+    """
+    Overwrites the entire persona prompt in Redis for the given client_id.
+    The prompt is stored as JSON under the key persona:{client_id}.
+    """
+    key = f"persona:{client_id}"
+    r.set(key, json.dumps({"prompt": prompt.strip()}))
+

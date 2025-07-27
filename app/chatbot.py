@@ -13,6 +13,8 @@ import import_firebase
 from firebase_admin import firestore
 import os
 from datetime import datetime, timedelta, timezone
+import re
+from app.redis_utils import r
 
 
 
@@ -83,6 +85,36 @@ def get_firebase_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
         stored = doc.to_dict().get("history", [])
         history.messages = messages_from_dict(stored)
     return history
+
+# Checks if client allows name of user to be extracted for conversational feel
+def extract_user_name(message: str) -> str | None:
+    match = (
+        re.search(r"call me (\w+)", message.lower())
+        or re.search(r"my name is (\w+)", message.lower())
+        or re.search(r"i am (\w+)", message.lower())
+    )
+    if match:
+        return match.group(1).capitalize()
+    return None
+
+def inject_user_name_into_prompt(client_id: str, session_id: str, message: str, prompt: str, config: dict) -> str:
+    if not config.get("enable_user_naming"):
+        return prompt
+
+    # Detect and store name
+    name = extract_user_name(message)
+    if name:
+        r.setex(f"user_name:{client_id}:{session_id}", 3600, name)
+
+    # Retrieve and inject name if present
+    stored_name = r.get(f"user_name:{client_id}:{session_id}")
+    if stored_name:
+        prompt += f"\n\nInstructions:\n- The user has identified themselves as {stored_name}. Refer to them by this name in a natural and friendly manner."
+        print(f"👤 Injecting user name '{stored_name}' into prompt.") if stored_name else print("👤 No user name to inject.")
+
+
+
+    return prompt
 
 def get_qa_chain(config: dict):
     """Create the retrieval QA chain for a client.
@@ -182,6 +214,10 @@ def get_response(chat_id: str, question: str, client_id: str, allow_fallback: bo
         if "{context}" not in prompt_text or "{question}" not in prompt_text:
             print("⚠️ Placeholders missing in Redis persona, appending defaults.")
             prompt_text = prompt_text.strip() + "\n\nContext:\n{context}\n\nQuestion:\n{question}"
+
+        # 🔁 Inject user name only for clients with config flag
+        prompt_text = inject_user_name_into_prompt(client_id, chat_id, question, prompt_text, config)
+
 
         config["system_prompt"] = prompt_text
 

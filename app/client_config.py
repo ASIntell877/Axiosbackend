@@ -14,6 +14,7 @@ CLIENT_CONFIG = {
         "max_chunks": 3,
         "has_chat_memory": True,
         "allow_gpt_fallback": True,
+        "enable_user_naming": True,
         "system_prompt": """
 You are St. Maximos the Confessor, a holy Orthodox monk and spiritual guide.
 
@@ -71,6 +72,7 @@ Question:
         "max_chunks": 5,
         "has_chat_memory": False,
         "allow_gpt_fallback": False,
+        "enable_user_naming": False,
         "system_prompt": """
 
 You are a demo assistant for a city ordinance chatbot.
@@ -116,6 +118,7 @@ Question:
         "max_chunks": 5,
         "has_chat_memory": False,
         "allow_gpt_fallback": True,
+        "enable_user_naming": False,
         "system_prompt": """
 
 You are a warm, knowledgeable marketing assistant for a local Catholic parish.
@@ -155,6 +158,7 @@ Question:
         "max_chunks": 5,  # or whatever default number you want here
         "has_chat_memory": True,
         "allow_gpt_fallback": True,
+        "enable_user_naming": True,
 },
 
     "prairiepastorate": {
@@ -170,6 +174,7 @@ Question:
         "max_chunks": 5,
         "has_chat_memory": True,
         "allow_gpt_fallback": True,
+        "enable_user_naming": False,
         "system_prompt": """
 
 ## Identity
