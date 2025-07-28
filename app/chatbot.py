@@ -142,8 +142,7 @@ def get_qa_chain(config: dict, chat_history: ChatMessageHistory):
     chat_prompt = get_prompt_template(config["system_prompt"])
     embeddings = OpenAIEmbeddings(
         model=config["embedding_model"],
-        openai_api_key=config["openai_api_key"],
-        model=config["embedding_model"], openai_api_key=config["openai_api_key"]        
+        openai_api_key=config["openai_api_key"],      
     )
     pc = PineconeClient(api_key=config["pinecone_api_key"])
     index = pc.Index(config["pinecone_index_name"])
