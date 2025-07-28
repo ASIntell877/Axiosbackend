@@ -4,79 +4,74 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.prompts import PromptTemplate
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain.schema import messages_from_dict, messages_to_dict
+from langchain.schema import messages_from_dict, messages_to_dict, SystemMessage, HumanMessage, AIMessage
 from pinecone import Pinecone as PineconeClient
 from langchain_pinecone import PineconeVectorStore
 from app.redis_utils import get_persona, increment_token_usage
 from openai import OpenAI
-import import_firebase
 from firebase_admin import firestore
 import os
 from datetime import datetime, timedelta, timezone
 import re
-from app.redis_utils import r
-
-
 
 from app.client_config import CLIENT_CONFIG
 
 # === This pulls client specific system prompts from client_config
+# Now we will no longer inject identity via prompt; instead rely on session memory
+
 def get_prompt_template(system_prompt_str: str):
     return PromptTemplate(
         input_variables=["context", "question"],
         template=system_prompt_str
     )
 
-
-# === In-memory message history store ===
-# This keeps track of past chat messages per session.
+# === Session-based memory store ===
 memory_store: dict[str, ChatMessageHistory] = {}
 memory_timestamps: dict[str, datetime] = {}
 SESSION_TIMEOUT = timedelta(minutes=30)
 
+
 def prune_memory_store() -> None:
-    """Remove expired in-memory chat sessions."""
     now = datetime.utcnow()
     expired = [k for k, ts in memory_timestamps.items() if now - ts > SESSION_TIMEOUT]
     for k in expired:
+        print(f"[MEMORY DEBUG] Pruning expired memory: {k}")
         memory_store.pop(k, None)
         memory_timestamps.pop(k, None)
 
-# Function to check if memory is enabled for a client
+
 def is_memory_enabled(client_id: str) -> bool:
-    """Return True if chat memory is enabled for the client."""
     return CLIENT_CONFIG.get(client_id, {}).get("has_chat_memory", False)
 
+
 def get_memory(chat_id: str, client_id: str) -> ChatMessageHistory:
-    """Retrieve chat history from Firestore or in-memory store."""
+    key = f"{client_id}:{chat_id}"
     if is_memory_enabled(client_id):
-        # If memory is enabled, fetch chat history from Firestore
-        return get_firebase_memory(client_id, chat_id)
+        print(f"[MEMORY DEBUG] Loading memory from Firestore for {key}")
+        history = get_firebase_memory(client_id, chat_id)
     else:
-        # Prune memory store
         prune_memory_store()
-        key = f"{client_id}:{chat_id}"
         if key not in memory_store:
             memory_store[key] = ChatMessageHistory()
-        memory_timestamps[key] = datetime.utcnow()
-        return memory_store[key]
+            print(f"[MEMORY DEBUG] Creating new in-memory history for {key}")
+        history = memory_store[key]
+    memory_timestamps[key] = datetime.utcnow()
+    print(f"[MEMORY DEBUG] Current chat history messages ({len(history.messages)}): {[m.content for m in history.messages]}")
+    return history
+
 
 def save_firebase_memory(client_id: str, chat_id: str, chat_history: ChatMessageHistory):
-    """Save chat memory to Firestore and add TTL timestamp."""
     db = firestore.client()
     doc_ref = db.collection("chat_memory").document(f"{client_id}_{chat_id}")
-
-    # Set expiration timestamp 30 minutes from now (UTC with tz info)
-    expiry_time = datetime.now(timezone.utc) + timedelta(minutes=30)
-
+    expiry_time = datetime.now(timezone.utc) + SESSION_TIMEOUT
     doc_ref.set({
         "history": messages_to_dict(chat_history.messages),
         "timestamp_expires": expiry_time
     })
-    print(f"Saved memory for session {chat_id} for client {client_id} to Firestore.")
+    print(f"[MEMORY DEBUG] Saved memory for session {chat_id} client {client_id} to Firestore")
+
 
 def get_firebase_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
-    """Retrieve chat memory from Firestore."""
     db = firestore.client()
     doc_ref = db.collection("chat_memory").document(f"{client_id}_{chat_id}")
     doc = doc_ref.get()
@@ -84,9 +79,10 @@ def get_firebase_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
     if doc.exists:
         stored = doc.to_dict().get("history", [])
         history.messages = messages_from_dict(stored)
+        print(f"[MEMORY DEBUG] Retrieved {len(history.messages)} messages from Firestore for {client_id}:{chat_id}")
     return history
 
-# Checks if client allows name of user to be extracted for conversational feel
+# === Identity extraction to insert as system message once ===
 def extract_user_name(message: str) -> str | None:
     match = (
         re.search(r"call me (\w+)", message.lower())
@@ -97,183 +93,117 @@ def extract_user_name(message: str) -> str | None:
         return match.group(1).capitalize()
     return None
 
-def inject_user_name_into_prompt(client_id: str, session_id: str, message: str, prompt: str, config: dict) -> str:
-    if not config.get("enable_user_naming"):
-        return prompt
-
-    # Detect and store name
-    name = extract_user_name(message)
-    if name:
-        r.setex(f"user_name:{client_id}:{session_id}", 3600, name)
-
-    # Retrieve and inject name if present
-    stored_name = r.get(f"user_name:{client_id}:{session_id}")
-    if stored_name:
-        prompt += f"\n\nInstructions:\n- The user has identified themselves as {stored_name}. Refer to them by this name in a natural and friendly manner."
-        print(f"👤 Injecting user name '{stored_name}' into prompt.") if stored_name else print("👤 No user name to inject.")
-
-
-
-    return prompt
+def summarize_recent_messages(history: ChatMessageHistory, max_messages: int = 5) -> str:
+    """
+    Build a simple recap of the last few turns.
+    """
+    recent = history.messages[-max_messages:]
+    lines = []
+    for msg in recent:
+        role = "User" if isinstance(msg, HumanMessage) else "Assistant" if isinstance(msg, AIMessage) else "Other"
+        lines.append(f"{role}: {msg.content}")
+    summary = "\n".join(lines)
+    print(f"[MEMORY DEBUG] Generated summary:\n{summary}")
+    return summary
 
 def get_qa_chain(config: dict):
-    """Create the retrieval QA chain for a client.
-
-    Parameters
-    ----------
-    config : dict
-        Client specific configuration.
-
-    Returns
-    -------
-    tuple
-        ``(qa_chain, retriever)`` where ``qa_chain`` is a
-        :class:`RunnableWithMessageHistory` instance and ``retriever`` is the
-        underlying retriever used by the chain.
-    """
-
-    # Create the prompt template using client-specific system prompt
     chat_prompt = get_prompt_template(config["system_prompt"])
-
-    # Initialize embeddings with the OpenAI key and embedding model
     embeddings = OpenAIEmbeddings(
         model=config["embedding_model"],
         openai_api_key=config["openai_api_key"]
     )
-
-    # Connect to Pinecone with the client's API key and index
     pc = PineconeClient(api_key=config["pinecone_api_key"])
     index = pc.Index(config["pinecone_index_name"])
-
-    # Create Pinecone vector store for retrieval
     vectorstore = PineconeVectorStore(index=index, embedding=embeddings, text_key="text")
-
-    # Initialize ChatOpenAI with the GPT model and OpenAI key
     llm = ChatOpenAI(
         model_name=config["gpt_model"],
         temperature=0.7,
         max_tokens=700,
         openai_api_key=config["openai_api_key"],
-        streaming=True,          # Enable streaming
-        stream_usage=True        # Enable token usage tracking
+        streaming=True,
+        stream_usage=True
     )
-
-    # Build the base ConversationalRetrievalChain using LangChain
-    retriever=vectorstore.as_retriever(search_kwargs={"k": config["max_chunks"]})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": config["max_chunks"]})
     base_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
         retriever=retriever,
-        combine_docs_chain_kwargs={
-            "prompt": chat_prompt,
-            "document_variable_name": "context"
-        },
+        combine_docs_chain_kwargs={"prompt": chat_prompt, "document_variable_name": "context"},
         return_source_documents=True
     )
-
-    # Wrap the chain with message memory, using client ID to separate sessions
     qa_with_history = RunnableWithMessageHistory(
         base_chain,
         lambda session_id: get_memory(session_id, config["client_id"]),
         input_messages_key="question",
         history_messages_key="chat_history"
     )
-
     return qa_with_history, retriever
 
-# Call OpenAI, log token usage
+# === Main response function ===
 def get_response(chat_id: str, question: str, client_id: str, allow_fallback: bool = False):
     print(f"\n--- Incoming request ---")
-    print(f"client_id: {client_id}")
-    print(f"chat_id: {chat_id}")
-    print(f"question: {question}")
-
+    print(f"client_id: {client_id}, chat_id: {chat_id}, question: {question}")
     config = CLIENT_CONFIG.get(client_id)
     if not config:
         raise ValueError(f"Unknown client ID: {client_id}")
+    config["client_id"] = client_id
 
-    config["client_id"] = client_id  # MUST be passed to memory/session logic
+    # --- Load session memory ---
+    chat_history = get_memory(chat_id, client_id)
+
+    # --- Inject name as system message if extracted and not already present ---
+    if config.get("enable_user_naming"):
+        name = extract_user_name(question)
+        if name:
+            # prevent duplicate
+            existing_names = [m.content for m in chat_history.messages if "identified themselves as" in m.content]
+            if not existing_names:
+                system_msg = SystemMessage(content=f"The user has identified themselves as {name}. Refer to them by this name.")
+                chat_history.add_message(system_msg)
+                print(f"[MEMORY DEBUG] Added system message for user name: {name}")
+
+    # --- Store memory ---
     if is_memory_enabled(client_id):
-        print("Chat memory is enabled for this client.")
-        chat_history = get_memory(chat_id, client_id)  # Retrieve previous chat history
-    else:
-        print("Chat memory is disabled for this client.")
-        chat_history = []  # No history for this client
-        
+        save_firebase_memory(client_id, chat_id, chat_history)
+
+    # --- Build dynamic persona or fallback ---
     redis_persona = get_persona(client_id)
-
     if redis_persona:
-        print("⚙️ Dynamic persona loaded from Redis")
-
-        if isinstance(redis_persona, dict):
-            prompt_text = redis_persona.get("prompt", "") or ""
-            max_chunks = redis_persona.get("max_chunks")
-        else:
-            prompt_text = redis_persona or ""
-            max_chunks = None
-
+        prompt_text = redis_persona.get("prompt") if isinstance(redis_persona, dict) else redis_persona
         if "{context}" not in prompt_text or "{question}" not in prompt_text:
-            print("⚠️ Placeholders missing in Redis persona, appending defaults.")
-            prompt_text = prompt_text.strip() + "\n\nContext:\n{context}\n\nQuestion:\n{question}"
-
-        # 🔁 Inject user name only for clients with config flag
-        prompt_text = inject_user_name_into_prompt(client_id, chat_id, question, prompt_text, config)
-
-
+            prompt_text += "\n\nContext:\n{context}\n\nQuestion:\n{question}"
         config["system_prompt"] = prompt_text
+        if config.get("enable_memory_summary"):
+            summary = summarize_recent_messages(chat_history)
+            if summary:
+                config["system_prompt"] = (
+                    f"Recent conversation summary:\n{summary}\n\n"
+                    f"{config['system_prompt']}"
+                )
+                print("[MEMORY DEBUG] Prepended session summary to system_prompt")
 
-        if max_chunks is not None:
-            print(f"⚙️ Overriding max_chunks to {max_chunks} from Redis persona")
-            config["max_chunks"] = max_chunks
+        print(f"Using Pinecone index: {config['pinecone_index_name']}")
+        if isinstance(redis_persona, dict) and redis_persona.get("max_chunks"):
+            config["max_chunks"] = redis_persona.get("max_chunks")
+        print(f"⚙️ Dynamic persona loaded for {client_id}")
     else:
         print("📝 Using static system prompt from CLIENT_CONFIG")
-
-    if "max_chunks" not in config:
-        config["max_chunks"] = 5  # your preferred default
+        if "max_chunks" not in config:
+            config["max_chunks"] = 5
 
     print(f"Using Pinecone index: {config['pinecone_index_name']}")
     print(f"System prompt (first line): {config['system_prompt'].splitlines()[0]}")
-    print(f"Using max_chunks: {config['max_chunks']}")
+    print(f"max_chunks: {config['max_chunks']}")
 
-    # Using get_openai_callback context manager for automatic token tracking
+    # --- Invoke the QA chain ---
     with get_openai_callback() as callback:
-        # Call the LangChain QA chain
         qa_chain, retriever = get_qa_chain(config)
         retrieved_docs = retriever.get_relevant_documents(question)
-
-        if not retrieved_docs:
-            print("⚠️ No relevant documents found in vector index.")
-            if not allow_fallback:
-                print("🔒 Fallback disabled. Returning default no-answer response.")
-                return {
-                    "answer": "No relevant information was found in the index. Please contact a staff member for help.",
-                    "source_documents": [],
-                    "token_usage": 0,
-                    "cost_estimation": 0.0
-                }
-            else:
-                print("⚠️ Fallback allowed. Proceeding with general GPT response.")
-
-        result = qa_chain.invoke(
-            {"question": question},
-            config={"configurable": {"session_id": chat_id}}
-        )
-        result["source_documents"] = retrieved_docs  # ✅ Ensure docs are returned
-
-        # Access token usage and cost from the callback
-        token_usage = callback.total_tokens  # Correct way to access total tokens
-        cost_estimation = callback.total_cost  # Correct way to access cost
-
-        print(f"✅ LangChain token usage: {token_usage} tokens")
-        print(f"💰 Estimated cost: ${cost_estimation:.4f}")
-
-        # Log usage to Redis
-        increment_token_usage(
-            api_key=client_id,
-            token_count=token_usage,
-            model=config["gpt_model"]
-        )
-
-        result["token_usage"] = token_usage
-        result["cost_estimation"] = cost_estimation
-
+        if not retrieved_docs and not allow_fallback:
+            return {"answer": "No relevant information found.", "source_documents": [], "token_usage": 0, "cost_estimation": 0.0}
+        result = qa_chain.invoke({"question": question}, config={"configurable": {"session_id": chat_id}})
+        result["source_documents"] = retrieved_docs
+        token_usage = callback.total_tokens
+        cost_estimation = callback.total_cost
+        increment_token_usage(api_key=client_id, token_count=token_usage, model=config["gpt_model"])
+        result.update({"token_usage": token_usage, "cost_estimation": cost_estimation})
     return result
