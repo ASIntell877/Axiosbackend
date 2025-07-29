@@ -155,7 +155,10 @@ async def get_response(
         retrieved_docs = retriever.get_relevant_documents(question)
         if not retrieved_docs and not allow_fallback:
             return {"answer": "No relevant information found.", "source_documents": [], "token_usage": 0, "cost_estimation": 0.0}
-        result = qa_chain.invoke({"question": question}, config={"configurable": {"session_id": chat_id}})
+        result = await qa_chain.ainvoke(
+            {"question": question},
+            config={"configurable": {"session_id": chat_id}},
+        )
         result["source_documents"] = retrieved_docs
         token_usage = callback.total_tokens
         cost_estimation = callback.total_cost
