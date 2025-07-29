@@ -98,8 +98,8 @@ def get_qa_chain(config: dict, chat_history: ChatMessageHistory):
         return_source_documents=True,
     )
 
-    async def load_history(session_id: str) -> ChatMessageHistory:
-        return await get_memory(session_id, config["client_id"])
+    def load_history(session_id: str) -> ChatMessageHistory:
+        return chat_history
 
     qa_with_history = RunnableWithMessageHistory(
         base_chain,
