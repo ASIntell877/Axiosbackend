@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi import Query
-from ratelimit import r
+from app.redis_utils import r
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from app.redis_utils import increment_token_usage
