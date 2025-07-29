@@ -286,7 +286,6 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
             chat_id=chat_id,
             question=request.question,
             client_id=client_id,
-            chat_history=chat_history,
             allow_fallback=allow_fallback,  # GPT fallback passed here
         )
 
