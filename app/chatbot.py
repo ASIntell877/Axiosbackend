@@ -27,12 +27,14 @@ def is_memory_enabled(client_id: str) -> bool:
     return CLIENT_CONFIG.get(client_id, {}).get("has_chat_memory", False)
 
 
-async def get_memory(chat_id: str, client_id: str) -> ChatMessageHistory:
+def get_memory(chat_id: str, client_id: str) -> ChatMessageHistory:
     """Load session memory from Redis or return a new history if disabled."""
     if not is_memory_enabled(client_id):
         return ChatMessageHistory()
     history = redis_memory.get_memory(client_id, chat_id)
-    print(f"[MEMORY DEBUG] Loaded Redis memory for {client_id}:{chat_id} ({len(history.messages)} messages)")
+    print(
+        f"[MEMORY DEBUG] Loaded Redis memory for {client_id}:{chat_id} ({len(history.messages)} messages)"
+    )
     return history
 
 
@@ -96,8 +98,8 @@ def get_qa_chain(config: dict, chat_history: ChatMessageHistory):
         return_source_documents=True,
     )
 
-    async def load_history(session_id: str) -> ChatMessageHistory:
-        return await get_memory(session_id, config["client_id"])
+    def load_history(session_id: str) -> ChatMessageHistory:
+        return get_memory(session_id, config["client_id"])
 
     qa_with_history = RunnableWithMessageHistory(
         base_chain,
@@ -122,7 +124,7 @@ async def get_response(
     config["client_id"] = client_id
 
     # Load session memory
-    chat_history = await get_memory(chat_id, client_id)
+    chat_history = get_memory(chat_id, client_id)
 
     # Inject user name if enabled
     if config.get("enable_user_naming"):

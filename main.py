@@ -221,7 +221,7 @@ async def get_history(
         return {"history": []}
 
     # Retrieve your LangChain ChatMessageHistory
-    history_obj = await get_memory(chat_id, client_id)
+    history_obj = get_memory(chat_id, client_id)
 
     # Convert each LangChain BaseMessage into {role, text}
     msgs = [
@@ -277,7 +277,7 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
 
         # Retrieve or initialize chat history
         if is_memory_enabled(client_id):
-            chat_history = await get_memory(chat_id, client_id)
+            chat_history = get_memory(chat_id, client_id)
         else:
             chat_history = ChatMessageHistory()
 
