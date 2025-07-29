@@ -22,11 +22,10 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 from app.redis_utils import increment_token_usage
 import httpx  # For proxy requests
-import import_firebase
-from store_chat_firebase import delete_memory
+from app.redis_memory import delete_memory
 from app.redis_utils import get_last_seen, set_last_seen
 from app.chatbot import get_response
-from app.chatbot import get_memory, save_firebase_memory, is_memory_enabled
+from app.chatbot import get_memory, save_redis_memory, is_memory_enabled
 from app.client_config import CLIENT_CONFIG
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from app.redis_utils import get_persona, save_chat_message
@@ -295,7 +294,7 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
         if is_memory_enabled(client_id):
             chat_history.add_user_message(request.question)
             chat_history.add_ai_message(result["answer"])
-            save_firebase_memory(client_id, chat_id, chat_history)
+            save_redis_memory(client_id, chat_id, chat_history)
 
         # Return the response
         return {

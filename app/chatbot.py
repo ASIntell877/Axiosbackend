@@ -5,8 +5,6 @@ from langchain.prompts import PromptTemplate
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.schema import (
-    messages_from_dict,
-    messages_to_dict,
     SystemMessage,
     HumanMessage,
     AIMessage,
@@ -14,7 +12,7 @@ from langchain.schema import (
 from pinecone import Pinecone as PineconeClient
 from langchain_pinecone import PineconeVectorStore
 from app.redis_utils import get_persona, increment_token_usage
-from firebase_admin import firestore
+from app import redis_memory
 import os
 from datetime import datetime, timedelta, timezone
 import re
@@ -58,8 +56,8 @@ def is_memory_enabled(client_id: str) -> bool:
 async def get_memory(chat_id: str, client_id: str) -> ChatMessageHistory:
     key = f"{client_id}:{chat_id}"
     if is_memory_enabled(client_id):
-        print(f"[MEMORY DEBUG] Loading memory from Firestore for {key}")
-        history = get_firebase_memory(client_id, chat_id)
+        print(f"[MEMORY DEBUG] Loading memory from Redis for {key}")
+        history = redis_memory.get_memory(client_id, chat_id)
     else:
         await prune_memory_store()
         async with memory_lock:
@@ -75,35 +73,20 @@ async def get_memory(chat_id: str, client_id: str) -> ChatMessageHistory:
     return history
 
 
-def save_firebase_memory(
+def save_redis_memory(
     client_id: str, chat_id: str, chat_history: ChatMessageHistory
 ):
-    db = firestore.client()
-    doc_ref = db.collection("chat_memory").document(f"{client_id}_{chat_id}")
-    expiry_time = datetime.now(timezone.utc) + SESSION_TIMEOUT
-    doc_ref.set(
-        {
-            "history": messages_to_dict(chat_history.messages),
-            "timestamp_expires": expiry_time,
-        }
-    )
+    """Wrapper to persist session history to Redis."""
+    redis_memory.save_memory(client_id, chat_id, chat_history)
     print(
-        f"[MEMORY DEBUG] Saved memory for session {chat_id} client {client_id} to Firestore"
+        f"[MEMORY DEBUG] Saved memory for session {chat_id} client {client_id} to Redis"
+
     )
 
 
-def get_firebase_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
-    db = firestore.client()
-    doc_ref = db.collection("chat_memory").document(f"{client_id}_{chat_id}")
-    doc = doc_ref.get()
-    history = ChatMessageHistory()
-    if doc.exists:
-        stored = doc.to_dict().get("history", [])
-        history.messages = messages_from_dict(stored)
-        print(
-            f"[MEMORY DEBUG] Retrieved {len(history.messages)} messages from Firestore for {client_id}:{chat_id}"
-        )
-    return history
+def get_redis_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
+    """Wrapper to load session history from Redis."""
+    return redis_memory.get_memory(client_id, chat_id)
 
 
 # === Identity extraction to insert as system message once ===
