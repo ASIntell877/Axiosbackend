@@ -1,6 +1,3 @@
-import asyncio
-from datetime import timedelta
-
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
 
@@ -11,7 +8,7 @@ def _make_key(client_id: str, chat_id: str) -> str:
     return f"chatmem:{client_id}:{chat_id}"
 
 
-def save_memory(client_id: str, chat_id: str, chat_history: ChatMessageHistory) -> None:
+async def save_memory(client_id: str, chat_id: str, chat_history: ChatMessageHistory) -> None:
     """Persist chat history to Redis as raw strings with expiration."""
     key = _make_key(client_id, chat_id)
     ttl_seconds = int(SESSION_TIMEOUT.total_seconds())
@@ -28,13 +25,13 @@ def save_memory(client_id: str, chat_id: str, chat_history: ChatMessageHistory) 
             role = msg.type
         pipe.rpush(key, f"{role}:{msg.content}")
     pipe.expire(key, ttl_seconds)
-    pipe.execute()
+    await pipe.execute()
 
 
-def get_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
+async def get_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
     """Retrieve chat history from Redis and rebuild ChatMessageHistory."""
     key = _make_key(client_id, chat_id)
-    entries = r.lrange(key, 0, -1)
+    entries = await r.lrange(key, 0, -1)
     history = ChatMessageHistory()
     for entry in entries:
         if ":" in entry:
@@ -52,7 +49,7 @@ def get_memory(client_id: str, chat_id: str) -> ChatMessageHistory:
     return history
 
 
-def delete_memory(client_id: str, chat_id: str) -> None:
+async def delete_memory(client_id: str, chat_id: str) -> None:
     """Remove chat history from Redis."""
     key = _make_key(client_id, chat_id)
-    r.delete(key)
+    await r.delete(key)

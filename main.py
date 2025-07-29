@@ -104,20 +104,20 @@ class ChatRequest(BaseModel):
 
 # Get persona info endpoint
 @app.get("/persona/{client_id}")
-def read_persona(
+async def read_persona(
     client_id: str,
     api_key_info: dict = Depends(verify_api_key),
 ):
     validate_client_id(client_id)
     if api_key_info["client"] not in ("admin", client_id):
         raise HTTPException(403, "Forbidden")
-    prompt = get_persona(client_id)
+    prompt = await get_persona(client_id)
     return {"client_id": client_id, "persona": prompt}
 
 
 # Admin endpoint to view daily + monthly usage
 @app.get("/admin/usage")
-def get_usage(
+async def get_usage(
     client_id: str = Query(...),
     api_key_info: dict = Depends(verify_api_key),
 ):
@@ -141,13 +141,13 @@ def get_usage(
 
     for date in dates:
         key = f"usage:{api_key}:{date.isoformat()}"
-        count = r.get(key)
+        count = await r.get(key)
         daily[date.isoformat()] = int(count) if count else 0
 
     # === MONTHLY USAGE ===
     quota_key = f"quota_usage:{api_key}"
-    quota_count = r.get(quota_key)
-    quota_ttl = r.ttl(quota_key)
+    quota_count = await r.get(quota_key)
+    quota_ttl = await r.ttl(quota_key)
 
     return {
         "client_id": client_id,
@@ -159,7 +159,7 @@ def get_usage(
 
 # admin endpoint to view token usage by xpai
 @app.get("/admin/token-usage")
-def get_token_usage_endpoint(
+async def get_token_usage_endpoint(
     client_id: str = Query(...),
     api_key_info: dict = Depends(verify_api_key),
 ):
@@ -172,7 +172,7 @@ def get_token_usage_endpoint(
     try:
         # Debugging: Log the API key and client before attempting to fetch usage
         print(f"Fetching token usage for api_key: {api_key}")
-        usage_data = get_token_usage(client_id)  # Returns dict with detailed usage
+        usage_data = await get_token_usage(client_id)   # Returns dict with detailed usage
     except Exception as e:
         # Debugging: Log any errors during token usage retrieval
         print(f"Error fetching token usage for {client_id}: {str(e)}")
@@ -221,7 +221,7 @@ async def get_history(
         return {"history": []}
 
     # Retrieve your LangChain ChatMessageHistory
-    history_obj = get_memory(chat_id, client_id)
+    history_obj = await get_memory(chat_id, client_id)
 
     # Convert each LangChain BaseMessage into {role, text}
     msgs = [
@@ -246,12 +246,12 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
 
     # --- Auto‑expire logic ---
     now = datetime.utcnow()
-    last = get_last_seen(client_id, chat_id)
+    last = await get_last_seen(client_id, chat_id)
     if last is None:
-        delete_memory(client_id, chat_id)
+        await delete_memory(client_id, chat_id)
     elif (now - last) > SESSION_TIMEOUT:
-        delete_memory(client_id, chat_id)
-    set_last_seen(client_id, chat_id, now)
+        await delete_memory(client_id, chat_id)
+    await set_last_seen(client_id, chat_id, now)
     # ---------------------------
 
     try:
@@ -261,23 +261,23 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
         monthly_limit = api_key_info.get("monthly_limit")
 
         # Rate‑limit checks
-        check_rate_limit(
+        await check_rate_limit(
             key,
             max_requests=max_req,
             window_seconds=window,
         )
 
         # Monthly quota enforcement
-        used = int(r.get(f"quota_usage:{key}") or 0)
+        used = int(await r.get(f"quota_usage:{key}") or 0)
         if monthly_limit and used >= monthly_limit:
             raise HTTPException(status_code=429, detail="Monthly quota exceeded")
 
         #  Record this request against the quota
-        track_usage(key)
+        await track_usage(key)
 
         # Retrieve or initialize chat history
         if is_memory_enabled(client_id):
-            chat_history = get_memory(chat_id, client_id)
+            chat_history = await get_memory(chat_id, client_id)
         else:
             chat_history = ChatMessageHistory()
 
@@ -293,7 +293,7 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
         if is_memory_enabled(client_id):
             chat_history.add_user_message(request.question)
             chat_history.add_ai_message(result["answer"])
-            save_redis_memory(client_id, chat_id, chat_history)
+            await save_redis_memory(client_id, chat_id, chat_history)
 
         # Return the response
         return {
