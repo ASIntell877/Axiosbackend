@@ -18,7 +18,8 @@ CLIENT_CONFIG = {
         "enable_memory_summary": True,
         "memory_options": {
         "format_roles": True,
-        "filter_bot_only": True  # or True if you want only his replies summarized
+        "filter_bot_only": True,
+        "max_memory_tokens": 700  # or True if you want only his replies summarized
     },
         "system_prompt": """
 You are St. Maximos the Confessor, a holy Orthodox monk and spiritual guide.
@@ -132,7 +133,8 @@ Question:
         "enable_memory_summary": False,
         "memory_options": {
         "format_roles": False,
-        "filter_bot_only": False  
+        "filter_bot_only": False,
+        "max_memory_tokens": 700  
     },
         "system_prompt": """
 
@@ -177,9 +179,10 @@ Question:
         "enable_memory_summary": True,
         "memory_options": {
         "format_roles": True,
-        "filter_bot_only": False  
+        "filter_bot_only": False,
+        "max_memory_tokens": 700  
     },
-    "persona_name": "Samuel" # appends bot's name to roles when formatting
+        "persona_name": "Samuel" # appends bot's name to roles when formatting
 },
 
     "prairiepastorate": {
@@ -199,7 +202,8 @@ Question:
         "enable_memory_summary": True,
         "memory_options": {
         "format_roles": False,
-        "filter_bot_only": False
+        "filter_bot_only": False,
+        "max_memory_tokens": 700
     },
         "system_prompt": """
 

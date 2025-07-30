@@ -10,6 +10,7 @@ from langchain_pinecone import PineconeVectorStore
 from app.redis_utils import get_persona, increment_token_usage
 from app import redis_memory
 import os
+import tiktoken
 from datetime import datetime, timedelta, timezone
 import re
 
@@ -69,29 +70,52 @@ def summarize_recent_messages(history: ChatMessageHistory, max_messages: int = 5
     print(f"[MEMORY DEBUG] Generated summary:\n{summary}")
     return summary
 
-def format_chat_history(chat_history: ChatMessageHistory, client_id: str) -> str:
-    """Format chat history based on client-specific memory_options."""
+def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        encoding = tiktoken.get_encoding("cl100k_base")
+    return len(encoding.encode(text))
+
+def format_chat_history(chat_history: ChatMessageHistory, client_id: str, max_tokens: int = None) -> str:
+    """Format chat history based on client config, with a token cap."""
     options = CLIENT_CONFIG.get(client_id, {}).get("memory_options", {})
+    if max_tokens is None:
+        max_tokens = options.get("max_memory_tokens", 700)
+
     format_roles = options.get("format_roles", False)
     filter_bot_only = options.get("filter_bot_only", False)
+    model_name = CLIENT_CONFIG.get(client_id, {}).get("gpt_model", "gpt-3.5-turbo")
+    speaker_name = CLIENT_CONFIG.get(client_id, {}).get("persona_name", "Assistant")
 
     messages = chat_history.messages
     if filter_bot_only:
         messages = [m for m in messages if isinstance(m, AIMessage)]
 
-    if format_roles:
-        formatted = []
-        for m in messages:
-            if isinstance(m, HumanMessage):
-                formatted.append(f"User: {m.content}")
-            elif isinstance(m, AIMessage):
-                speaker = CLIENT_CONFIG.get(client_id, {}).get("persona_name", "Assistant")
-                formatted.append(f"{speaker}: {m.content}")
-            elif isinstance(m, SystemMessage):
-                formatted.append(f"System: {m.content}")
-        return "\n".join(formatted)
+    formatted_lines = []
+    total_tokens = 0
 
-    return "\n".join(m.content for m in messages)
+    # Iterate from most recent to oldest, and stop when you hit max tokens
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            line = f"User: {msg.content}" if format_roles else msg.content
+        elif isinstance(msg, AIMessage):
+            line = f"{speaker_name}: {msg.content}" if format_roles else msg.content
+        elif isinstance(msg, SystemMessage):
+            line = f"System: {msg.content}" if format_roles else msg.content
+        else:
+            continue
+
+        tokens = count_tokens(line, model=model_name)
+
+        if total_tokens + tokens > max_tokens:
+            break
+
+        formatted_lines.insert(0, line)  # Add to the beginning since we're reversing
+        total_tokens += tokens
+
+    return "\n".join(formatted_lines)
+
 
 
 
