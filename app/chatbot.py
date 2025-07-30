@@ -69,6 +69,31 @@ def summarize_recent_messages(history: ChatMessageHistory, max_messages: int = 5
     print(f"[MEMORY DEBUG] Generated summary:\n{summary}")
     return summary
 
+def format_chat_history(chat_history: ChatMessageHistory, client_id: str) -> str:
+    """Format chat history based on client-specific memory_options."""
+    options = CLIENT_CONFIG.get(client_id, {}).get("memory_options", {})
+    format_roles = options.get("format_roles", False)
+    filter_bot_only = options.get("filter_bot_only", False)
+
+    messages = chat_history.messages
+    if filter_bot_only:
+        messages = [m for m in messages if isinstance(m, AIMessage)]
+
+    if format_roles:
+        formatted = []
+        for m in messages:
+            if isinstance(m, HumanMessage):
+                formatted.append(f"User: {m.content}")
+            elif isinstance(m, AIMessage):
+                speaker = CLIENT_CONFIG.get(client_id, {}).get("persona_name", "Assistant")
+                formatted.append(f"{speaker}: {m.content}")
+            elif isinstance(m, SystemMessage):
+                formatted.append(f"System: {m.content}")
+        return "\n".join(formatted)
+
+    return "\n".join(m.content for m in messages)
+
+
 
 def get_qa_chain(config: dict, chat_history: ChatMessageHistory):
     chat_prompt = get_prompt_template(config["system_prompt"])
@@ -145,10 +170,11 @@ async def get_response(
             prompt_text += "\n\nContext:\n{context}\n\nQuestion:\n{question}"
         config["system_prompt"] = prompt_text
         if config.get("enable_memory_summary"):
-            summary = summarize_recent_messages(chat_history)
-            if summary:
-                config["system_prompt"] = f"Recent conversation summary:\n{summary}\n\n{config['system_prompt']}"
-                print("[MEMORY DEBUG] Prepended session summary to system_prompt")
+            formatted_history = format_chat_history(chat_history, client_id)
+            if formatted_history:
+                config["system_prompt"] = f"Recent conversation:\n{formatted_history}\n\n{config['system_prompt']}"
+                print("[MEMORY DEBUG] Injected formatted chat history into system_prompt")
+
     else:
         if "max_chunks" not in config:
             config["max_chunks"] = 5

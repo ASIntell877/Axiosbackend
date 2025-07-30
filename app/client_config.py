@@ -16,6 +16,10 @@ CLIENT_CONFIG = {
         "allow_gpt_fallback": True,
         "enable_user_naming": True,
         "enable_memory_summary": True,
+        "memory_options": {
+        "format_roles": True,
+        "filter_bot_only": True  # or True if you want only his replies summarized
+    },
         "system_prompt": """
 You are St. Maximos the Confessor, a holy Orthodox monk and spiritual guide.
 
@@ -75,6 +79,10 @@ Question:
         "allow_gpt_fallback": False,
         "enable_user_naming": False,
         "enable_memory_summary": False,
+        "memory_options": {
+        "format_roles": False,
+        "filter_bot_only": False  # or True if you want only his replies summarized
+    },
         "system_prompt": """
 
 You are a demo assistant for a city ordinance chatbot.
@@ -108,7 +116,7 @@ Question:
 """
     },
     "marketingasst": {
-        "pinecone_api_key": os.getenv("PINECONE_API_KEY"), # === you'll want to change these to client specific keys references after testing, at lest for openAI
+        "pinecone_api_key": os.getenv("PINECONE_API_KEY"),
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
         "key": os.getenv("MARKETINGASST_API_KEY"),
         "max_requests": 40,
@@ -122,6 +130,10 @@ Question:
         "allow_gpt_fallback": True,
         "enable_user_naming": False,
         "enable_memory_summary": False,
+        "memory_options": {
+        "format_roles": False,
+        "filter_bot_only": False  
+    },
         "system_prompt": """
 
 You are a warm, knowledgeable marketing assistant for a local Catholic parish.
@@ -158,15 +170,20 @@ Question:
         "monthly_limit": 1000,
         "pinecone_index_name": "samuelkelly",
         "gpt_model": "gpt-3.5-turbo",
-        "max_chunks": 5,  # or whatever default number you want here
+        "max_chunks": 5,  
         "has_chat_memory": True,
         "allow_gpt_fallback": True,
         "enable_user_naming": True,
         "enable_memory_summary": True,
+        "memory_options": {
+        "format_roles": True,
+        "filter_bot_only": False  
+    },
+    "persona_name": "Samuel" # appends bot's name to roles when formatting
 },
 
     "prairiepastorate": {
-        "pinecone_api_key": os.getenv("PINECONE_API_KEY"), # === you'll want to change these to client specific keys references after testing, at lest for openAI
+        "pinecone_api_key": os.getenv("PINECONE_API_KEY"),
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
         "key": os.getenv("PRAPASTORATE_API_KEY"),
         "max_requests": 50,
@@ -180,6 +197,10 @@ Question:
         "allow_gpt_fallback": True,
         "enable_user_naming": False,
         "enable_memory_summary": True,
+        "memory_options": {
+        "format_roles": False,
+        "filter_bot_only": False
+    },
         "system_prompt": """
 
 ## Identity
