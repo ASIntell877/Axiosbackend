@@ -186,22 +186,47 @@ async def get_response(
                 chat_history.add_message(SystemMessage(content=f"The user has identified themselves as {name}. Refer to them by this name."))
                 print(f"[MEMORY DEBUG] Added system message for user name: {name}")
 
-    # Build persona or static prompt
-    redis_persona = await get_persona(client_id)
-    if redis_persona:
-        prompt_text = redis_persona.get("prompt") if isinstance(redis_persona, dict) else redis_persona
-        if "{context}" not in prompt_text or "{question}" not in prompt_text:
-            prompt_text += "\n\nContext:\n{context}\n\nQuestion:\n{question}"
-        config["system_prompt"] = prompt_text
-        if config.get("enable_memory_summary"):
-            formatted_history = format_chat_history(chat_history, client_id)
-            if formatted_history:
-                config["system_prompt"] = f"Recent conversation:\n{formatted_history}\n\n{config['system_prompt']}"
-                print("[MEMORY DEBUG] Injected formatted chat history into system_prompt")
+    # Build system_prompt: dynamic if flagged, else use static config
+    use_dynamic = config.get("use_dynamic_persona", False)
 
+    if use_dynamic:
+        # load dynamic persona from Redis
+        redis_persona = await get_persona(client_id)
+        if redis_persona:
+            prompt_text = (
+                redis_persona.get("prompt")
+                if isinstance(redis_persona, dict)
+                else redis_persona
+            )
+            # ensure context/question placeholders
+            if "{context}" not in prompt_text or "{question}" not in prompt_text:
+                prompt_text += "\n\nContext:\n{context}\n\nQuestion:\n{question}"
+            config["system_prompt"] = prompt_text
+            print("[MEMORY DEBUG] Using Redis persona for system_prompt")
     else:
+        # static prompt from client_config already in config["system_prompt"]
         if "max_chunks" not in config:
             config["max_chunks"] = 5
+
+    # Inject session-memory summary if enabled
+    if config.get("enable_memory_summary"):
+        formatted_history = format_chat_history(chat_history, client_id)
+        if formatted_history:
+            config["system_prompt"] = (
+                f"Recent conversation:\n{formatted_history}\n\n"
+                f"{config['system_prompt']}"
+            )
+            print("[MEMORY DEBUG] Injected formatted chat history into system_prompt")
+    user_name = "my friend" # attempt to pull name from session memory, default to "my friend"
+    for msg in chat_history.messages:
+        # we wrote a SystemMessage like: "The user has identified themselves as {Name}."
+        if isinstance(msg, SystemMessage) and "identified themselves as" in msg.content:
+            user_name = msg.content.split("identified themselves as ")[1].rstrip(".")
+            break
+
+    # Perform the .format() with the user_name
+    config["system_prompt"] = config["system_prompt"].format(user_name=user_name)
+
 
     # Invoke QA chain
     with get_openai_callback() as callback:

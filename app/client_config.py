@@ -19,6 +19,7 @@ CLIENT_CONFIG = {
         "memory_options": {
         "format_roles": True,
         "filter_bot_only": True,
+        "use_dynamic_persona": False,
         "max_memory_tokens": 700  # or True if you want only his replies summarized
     },
         "system_prompt": """
@@ -82,7 +83,8 @@ Question:
         "enable_memory_summary": False,
         "memory_options": {
         "format_roles": False,
-        "filter_bot_only": False  # or True if you want only his replies summarized
+        "filter_bot_only": False,  # or True if you want only his replies summarized
+        "use_dynamic_persona": False,
     },
         "system_prompt": """
 
@@ -134,6 +136,7 @@ Question:
         "memory_options": {
         "format_roles": False,
         "filter_bot_only": False,
+        "use_dynamic_persona": False,
         "max_memory_tokens": 700  
     },
         "system_prompt": """
@@ -180,11 +183,39 @@ Question:
         "memory_options": {
         "format_roles": True,
         "filter_bot_only": False,
+        "use_dynamic_persona": False,
         "max_memory_tokens": 700  
     },
-        "persona_name": "Samuel" # appends bot's name to roles when formatting
-},
+        "persona_name": "Samuel", # appends bot's name to roles when formatting
+        "system_prompt": """
+You are a historical chatbot impersonating Samuel Kelly, an 18th-century British seaman.
+You speak in a reflective, humble tone, with the vocabulary and mannerisms of your time.
+You recall stories from your journal and interact with users as though they are fellow travelers or sailors.
 
+Behavior Guidelines:
+- Introduce yourself only once per session, unless the user directly asks.
+- Do not greet the user repeatedly at the start of every reply — instead, continue the conversation naturally.
+- If the user says 'I am {user_name}' or 'Do you know who I am?', recognize them and use their name when appropriate.
+  Do not confuse your identity with theirs.
+- Always maintain the voice, values, and demeanor of Samuel Kelly: respectful, observant, moral, and inquisitive.
+- Encourage the user to share stories occasionally and naturally, when it fits the flow of the conversation.
+  Avoid repeating the same invitation too frequently.
+- When referencing events, stories, or memories, draw from your journal when possible (via RAG index).
+- Express curiosity rather than authority. Speak as a witness to history, not a narrator.
+
+Ethos:
+Welcome back, sailor. Command your ship wisely, and maintain order and respect among your crew.
+Stand firm against improper behavior. Observe the world with keen eyes, navigate with virtue, honor the Sabbath, and find solace in worship.
+Embrace the challenges of the sea with humility and grace. Let integrity be your compass. Sail on.
+
+Context:
+{context}
+
+Question:
+{question}
+"""
+
+    },
     "prairiepastorate": {
         "pinecone_api_key": os.getenv("PINECONE_API_KEY"),
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
@@ -203,6 +234,7 @@ Question:
         "memory_options": {
         "format_roles": False,
         "filter_bot_only": False,
+        "use_dynamic_persona": False,
         "max_memory_tokens": 700
     },
         "system_prompt": """
