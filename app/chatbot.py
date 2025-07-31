@@ -225,15 +225,18 @@ async def get_response(
             print("[MEMORY DEBUG] Injected formatted chat history into system_prompt")
     user_name = "my friend" # attempt to pull name from session memory, default to "my friend"
     for msg in chat_history.messages:
-        # we wrote a SystemMessage like: "The user has identified themselves as {Name}."
         if isinstance(msg, SystemMessage) and "identified themselves as" in msg.content:
             user_name = msg.content.split("identified themselves as ")[1].rstrip(".")
             break
+    print(f"[DEBUG] user_name from memory: {user_name}")
+
 
     # Perform the .format() with the user_name
     config["system_prompt"] = config["system_prompt"].format(
-    user_name=user_name, context="{context}", question="{question}"
+        user_name=user_name, context="{context}", question="{question}"
     )
+    print(f"[DEBUG] Final system prompt:\n{"system_prompt"}")
+
 
 
     # Invoke QA chain
