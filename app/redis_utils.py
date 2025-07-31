@@ -125,3 +125,7 @@ async def set_persona(client_id: str, prompt: str):
     key = f"persona:{client_id}"
     await r.set(key, json.dumps({"prompt": prompt.strip()}))
 
+async def set_client_config(client_id: str, config: dict):
+    key = f"client_config:{client_id}"
+    await r.set(key, json.dumps(config))
+
