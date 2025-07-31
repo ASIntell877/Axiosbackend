@@ -231,7 +231,9 @@ async def get_response(
             break
 
     # Perform the .format() with the user_name
-    config["system_prompt"] = config["system_prompt"].format(user_name=user_name)
+    config["system_prompt"] = config["system_prompt"].format(
+    user_name=user_name, context="{context}", question="{question}"
+    )
 
 
     # Invoke QA chain
