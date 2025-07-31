@@ -204,7 +204,13 @@ async def get_response(
             config["system_prompt"] = prompt_text
             print("[MEMORY DEBUG] Using Redis persona for system_prompt")
     else:
-        # static prompt from client_config already in config["system_prompt"]
+        # static prompt from client_config
+        sp = config.get("system_prompt", "")
+        # ensure RAG placeholders are always present
+        if "{context}" not in sp or "{question}" not in sp:
+            sp += "\n\nContext:\n{context}\n\nQuestion:\n{question}"
+        config["system_prompt"] = sp
+        # fallback chunk size if missing
         if "max_chunks" not in config:
             config["max_chunks"] = 5
 
