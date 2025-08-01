@@ -13,8 +13,10 @@ import os
 import tiktoken
 from datetime import datetime, timedelta, timezone
 import re
+import inspect
 
 from app.client_config import CLIENT_CONFIG
+from app.redis_utils import get_client_config
 
 
 def get_prompt_template(system_prompt_str: str):
@@ -24,13 +26,16 @@ def get_prompt_template(system_prompt_str: str):
     )
 
 
-def is_memory_enabled(client_id: str) -> bool:
-    return CLIENT_CONFIG.get(client_id, {}).get("has_chat_memory", False)
+async def is_memory_enabled(client_id: str) -> bool:
+    config = await get_client_config(client_id)
+    if not config:
+        return False
+    return config.get("has_chat_memory", False)
 
 
 async def get_memory(chat_id: str, client_id: str) -> ChatMessageHistory:
     """Load session memory from Redis or return a new history if disabled."""
-    if not is_memory_enabled(client_id):
+    if not await is_memory_enabled(client_id):
         return ChatMessageHistory()
     history = await redis_memory.get_memory(client_id, chat_id)
     print(
@@ -77,16 +82,17 @@ def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
         encoding = tiktoken.get_encoding("cl100k_base")
     return len(encoding.encode(text))
 
-def format_chat_history(chat_history: ChatMessageHistory, client_id: str, max_tokens: int = None) -> str:
+async def format_chat_history(chat_history: ChatMessageHistory, client_id: str, max_tokens: int = None) -> str:
     """Format chat history based on client config, with a token cap."""
-    options = CLIENT_CONFIG.get(client_id, {}).get("memory_options", {})
+    config = await get_client_config(client_id) or {}
+    options = config.get("memory_options", {})
     if max_tokens is None:
         max_tokens = options.get("max_memory_tokens", 700)
 
     format_roles = options.get("format_roles", False)
     filter_bot_only = options.get("filter_bot_only", False)
-    model_name = CLIENT_CONFIG.get(client_id, {}).get("gpt_model", "gpt-3.5-turbo")
-    speaker_name = CLIENT_CONFIG.get(client_id, {}).get("persona_name", "Assistant")
+    model_name = config.get("gpt_model", "gpt-3.5-turbo")
+    speaker_name = config.get("persona_name", "Assistant")
 
     messages = chat_history.messages
     if filter_bot_only:
@@ -167,7 +173,7 @@ async def get_response(
 ):
     print("\n--- Incoming request ---")
     print(f"client_id: {client_id}, chat_id: {chat_id}, question: {question}")
-    config = CLIENT_CONFIG.get(client_id)
+    config = await get_client_config(client_id)
     if not config:
         raise ValueError(f"Unknown client ID: {client_id}")
     # Work with a per-request copy so global settings remain unchanged
@@ -175,7 +181,8 @@ async def get_response(
     config["client_id"] = client_id
 
     # Load session memory
-    chat_history = await get_memory(chat_id, client_id)
+    mem_res = get_memory(chat_id, client_id)
+    chat_history = await mem_res if inspect.isawaitable(mem_res) else mem_res
 
     # Inject user name if enabled
     if config.get("enable_user_naming"):
@@ -216,7 +223,7 @@ async def get_response(
 
     # Inject session-memory summary if enabled
     if config.get("enable_memory_summary"):
-        formatted_history = format_chat_history(chat_history, client_id)
+        formatted_history = await format_chat_history(chat_history, client_id)
         if formatted_history:
             config["system_prompt"] = (
                 f"Recent conversation:\n{formatted_history}\n\n"
@@ -235,7 +242,7 @@ async def get_response(
     config["system_prompt"] = config["system_prompt"].format(
         user_name=user_name, context="{context}", question="{question}"
     )
-    print(f"[DEBUG] Final system prompt:\n{"system_prompt"}")
+    print(f"[DEBUG] Final system prompt:\n{config['system_prompt']}")
 
 
 

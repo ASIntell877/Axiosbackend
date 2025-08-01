@@ -1,6 +1,21 @@
-from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
+from langchain_community.chat_message_histories.in_memory import ChatMessageHistory as LCChatHistory
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
 
+if not hasattr(LCChatHistory, "add_user_message"):
+    class ChatMessageHistory:
+        def __init__(self):
+            self.messages = []
+        def add_ai_message(self, text):
+            self.messages.append(type("M", (), {"type": "ai", "content": text}))
+        def add_user_message(self, text):
+            self.messages.append(type("M", (), {"type": "human", "content": text}))
+        def add_message(self, msg):
+            self.messages.append(msg)
+    import sys
+    sys.modules['langchain_community.chat_message_histories.in_memory'].ChatMessageHistory = ChatMessageHistory
+else:
+    ChatMessageHistory = LCChatHistory
+    
 from .redis_utils import r, SESSION_TIMEOUT
 
 

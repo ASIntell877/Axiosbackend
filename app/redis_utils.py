@@ -1,9 +1,16 @@
 import os
-import redis.asyncio as redis
 import json
 import time
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+import inspect
+import asyncio
+from app.client_config import CLIENT_CONFIG
+
+try:
+    import redis.asyncio as redis
+except Exception:
+    import redis as redis
 
 load_dotenv()
 
@@ -129,3 +136,49 @@ async def set_client_config(client_id: str, config: dict):
     key = f"client_config:{client_id}"
     await r.set(key, json.dumps(config))
 
+
+async def get_client_config(client_id: str) -> dict | None:
+    """Fetch client config from Redis, falling back to CLIENT_CONFIG."""
+    key = f"client_config:{client_id}"
+    raw = r.get(key)
+    raw = await raw if inspect.isawaitable(raw) else raw
+    if raw is None:
+        print(f"[DEBUG] Using fallback config for {client_id}")
+        return CLIENT_CONFIG.get(client_id)
+    try:
+        cfg = json.loads(raw)
+        print(f"[DEBUG] Loaded {client_id} config from Redis")
+        return cfg
+    except json.JSONDecodeError:
+        return CLIENT_CONFIG.get(client_id)
+
+
+async def get_all_client_configs() -> dict:
+    """Return combined configs from Redis and fallback file."""
+    configs = CLIENT_CONFIG.copy()
+    iterator = r.scan_iter(match="client_config:*")
+    if hasattr(iterator, "__aiter__"):
+        async for key in iterator:
+            cid = key.split(":", 1)[1]
+            val = r.get(key)
+            val = await val if inspect.isawaitable(val) else val
+            if not val:
+                continue
+            try:
+                configs[cid] = json.loads(val)
+                print(f"[DEBUG] Loaded {cid} config from Redis")
+            except json.JSONDecodeError:
+                pass
+    else:
+        for key in iterator:
+            cid = key.split(":", 1)[1]
+            val = r.get(key)
+            if inspect.isawaitable(val):
+                val = asyncio.run(val)
+            if not val:
+                continue
+            try:
+                configs[cid] = json.loads(val)
+            except json.JSONDecodeError:
+                pass
+    return configs

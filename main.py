@@ -26,10 +26,9 @@ from app.redis_memory import delete_memory
 from app.redis_utils import get_last_seen, set_last_seen
 from app.chatbot import get_response
 from app.chatbot import get_memory, save_redis_memory, is_memory_enabled
-from app.client_config import CLIENT_CONFIG
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from app.redis_utils import get_persona, save_chat_message
-from app.redis_utils import get_token_usage
+from app.redis_utils import get_token_usage, get_client_config, get_all_client_configs
 from recaptcha import verify_recaptcha  # Your recaptcha verification function
 from ratelimit import check_rate_limit, track_usage
 from slowapi import Limiter
@@ -39,9 +38,10 @@ from slowapi.middleware import SlowAPIMiddleware
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 
 
-# Get client configuration from client_config
-def get_client_by_api_key(api_key: str):
-    for client_id, config in CLIENT_CONFIG.items():
+# Retrieve client configuration from Redis with fallback
+async def get_client_by_api_key(api_key: str):
+    configs = await get_all_client_configs()
+    for client_id, config in configs.items():
         if config.get("key") == api_key:
             return client_id, config
     return None, None
@@ -68,17 +68,18 @@ app.add_middleware(SlowAPIMiddleware)
 
 
 # Ensure a provided client_id is known
-def validate_client_id(client_id: str) -> None:
-    if client_id not in CLIENT_CONFIG:
+async def validate_client_id(client_id: str) -> None:
+    cfg = await get_client_config(client_id)
+    if cfg is None:
         raise HTTPException(status_code=400, detail="Unknown client")
     
 
 # Dependency to validate x-api-key header on /chat endpoint
-def verify_api_key(x_api_key: str = Header(...)):
+async def verify_api_key(x_api_key: str = Header(...)):
     if x_api_key == ADMIN_API_KEY:
         return {"client": "admin", "key": x_api_key}
 
-    client_id, config = get_client_by_api_key(x_api_key)
+    client_id, config = await get_client_by_api_key(x_api_key)
     if client_id and config:
         return {
             "client": client_id,
@@ -108,7 +109,7 @@ async def read_persona(
     client_id: str,
     api_key_info: dict = Depends(verify_api_key),
 ):
-    validate_client_id(client_id)
+    await validate_client_id(client_id)
     if api_key_info["client"] not in ("admin", client_id):
         raise HTTPException(403, "Forbidden")
     prompt = await get_persona(client_id)
@@ -125,11 +126,11 @@ async def get_usage(
 
     Raises a 400 error if the client_id does not exist in ``API_KEYS``.
     """
-    validate_client_id(client_id)
+    await validate_client_id(client_id)
     if api_key_info["client"] != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    info = CLIENT_CONFIG.get(client_id)
+    info = await get_client_config(client_id)
     if info is None:
         raise HTTPException(status_code=400, detail="Unknown client_id")
     api_key = info["key"]
@@ -163,7 +164,7 @@ async def get_token_usage_endpoint(
     client_id: str = Query(...),
     api_key_info: dict = Depends(verify_api_key),
 ):
-    validate_client_id(client_id)
+    await validate_client_id(client_id)
     if api_key_info["client"] != "admin":
         raise HTTPException(403, "Forbidden")
 
@@ -199,7 +200,7 @@ async def get_history(
     """
     Return the saved chat messages (as {role, text}) for this client_id + chat_id.
     """
-    validate_client_id(client_id)
+    await validate_client_id(client_id)
     caller = api_key_info["client"]
 
     # 1) Admins can fetch any history
@@ -217,7 +218,7 @@ async def get_history(
         )
 
     # Safe to read memory
-    if not is_memory_enabled(client_id):
+    if not await is_memory_enabled(client_id):
         return {"history": []}
 
     # Retrieve your LangChain ChatMessageHistory
@@ -235,10 +236,10 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
     client_id = request.client_id
     chat_id = request.chat_id
 
-    validate_client_id(client_id)
+    await validate_client_id(client_id)
 
     # ---Check whether gpt fallback is allowed for client, default to false for strict indexing only
-    client_settings = CLIENT_CONFIG.get(client_id, {})
+    client_settings = await get_client_config(client_id) or {}
     allow_fallback = client_settings.get("allow_gpt_fallback", False)
     print(
         f"[Chat] client_id: {client_id} | allow_fallback: {allow_fallback}"
@@ -276,7 +277,7 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
         await track_usage(key)
 
         # Retrieve or initialize chat history
-        if is_memory_enabled(client_id):
+        if await is_memory_enabled(client_id):
             chat_history = await get_memory(chat_id, client_id)
         else:
             chat_history = ChatMessageHistory()
@@ -290,7 +291,7 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
         )
 
         # Save updated history if memory is enabled
-        if is_memory_enabled(client_id):
+        if await is_memory_enabled(client_id):
             chat_history.add_user_message(request.question)
             chat_history.add_ai_message(result["answer"])
             await save_redis_memory(client_id, chat_id, chat_history)
@@ -317,7 +318,7 @@ async def process_chat(request: ChatRequest, api_key_info: dict):
 # Internal chat endpoint — expects valid API key header
 @app.post("/chat")
 async def chat(request: ChatRequest, api_key_info: dict = Depends(verify_api_key)):
-    validate_client_id(request.client_id)
+    await validate_client_id(request.client_id)
     # admins can't impersonate clients
     if api_key_info["client"] == "admin":
         raise HTTPException(403, "Admins may not call /chat")
@@ -361,7 +362,7 @@ async def proxy_chat(request: Request):
     if not await verify_recaptcha(recaptcha_token):
         raise HTTPException(status_code=403, detail="reCAPTCHA verification failed")
 
-    info = CLIENT_CONFIG.get(client_id)
+    info = await get_client_config(client_id)
     if not info:
         raise HTTPException(status_code=400, detail="Unknown client")
 
