@@ -249,7 +249,7 @@ async def get_response(
     # Invoke QA chain
     with get_openai_callback() as callback:
         qa_chain, retriever = get_qa_chain(config, chat_history)
-        retrieved_docs = retriever.get_relevant_documents(question)
+        retrieved_docs = await retriever.ainvoke(question)
         if not retrieved_docs and not allow_fallback:
             return {"answer": "No relevant information found.", "source_documents": [], "token_usage": 0, "cost_estimation": 0.0}
         result = await qa_chain.ainvoke(
