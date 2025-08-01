@@ -49,3 +49,4 @@ add_clientconfig_redis.py
 edit_client_redis.py
 load_configs_redis.py
 view_client_redis.py
+bulk_edit_redis_client.py

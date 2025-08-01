@@ -133,6 +133,11 @@ async def get_usage(
     info = await get_client_config(client_id)
     if info is None:
         raise HTTPException(status_code=400, detail="Unknown client_id")
+    if not info.get("allow_proxy_chat", False): #checks that client config is set to allow proxy chat-added security
+        raise HTTPException(
+            status_code=403,
+            detail="This client is not authorized to use the proxy-chat endpoint."
+        )
     api_key = info["key"]
 
     # === DAILY USAGE ===
