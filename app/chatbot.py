@@ -21,7 +21,7 @@ from app.redis_utils import get_client_config
 
 def get_prompt_template(system_prompt_str: str):
     return PromptTemplate(
-        input_variables=["context", "question"],
+        input_variables=["context", "user message"],
         template=system_prompt_str
     )
 
@@ -133,7 +133,7 @@ def get_qa_chain(config: dict, chat_history: ChatMessageHistory):
     qa_with_history = RunnableWithMessageHistory(
         base_chain,
         load_history,
-        input_messages_key="question",
+        input_messages_key="user message",
         history_messages_key="chat_history",
     )
     return qa_with_history, retriever
@@ -141,12 +141,12 @@ def get_qa_chain(config: dict, chat_history: ChatMessageHistory):
 
 async def get_response(
     chat_id: str,
-    question: str,
+    user_message: str,
     client_id: str,
     allow_fallback: bool = False
 ):
     print("\n--- Incoming request ---")
-    print(f"client_id: {client_id}, chat_id: {chat_id}, question: {question}")
+    print(f"client_id: {client_id}, chat_id: {chat_id}, user_message: {user_message}")
     config = await get_client_config(client_id)
     if not config:
         raise ValueError(f"Unknown client ID: {client_id}")
@@ -160,7 +160,7 @@ async def get_response(
 
     # Inject user name if enabled
     if config.get("enable_user_naming"):
-        name = extract_user_name(question)
+        name = extract_user_name(user_message)
         if name:
             existing = [m.content for m in chat_history.messages if "identified themselves as" in m.content]
             if not existing:
@@ -179,21 +179,27 @@ async def get_response(
                 if isinstance(redis_persona, dict)
                 else redis_persona
             )
-            # ensure context/question placeholders
-            if "{context}" not in prompt_text or "{question}" not in prompt_text:
-                prompt_text += "\n\nContext:\n{context}\n\nQuestion:\n{question}"
+            # ensure context/user message placeholders
+            if "{context}" not in prompt_text or "{user message}" not in prompt_text:
+                prompt_text += "\n\nContext:\n{context}\n\nUser message:\n{user message}"
             config["system_prompt"] = prompt_text
             print("[MEMORY DEBUG] Using Redis persona for system_prompt")
     else:
         # static prompt from client_config
         sp = config.get("system_prompt", "")
         # ensure RAG placeholders are always present
-        if "{context}" not in sp or "{question}" not in sp:
-            sp += "\n\nContext:\n{context}\n\nQuestion:\n{question}"
+        if "{context}" not in sp or "{user message}" not in sp:
+            sp += "\n\nContext:\n{context}\n\nUser message:\n{user message}"
         config["system_prompt"] = sp
         # fallback chunk size if missing
         if "max_chunks" not in config:
             config["max_chunks"] = 5
+
+    # === Validate placeholder presence ===
+    required_placeholders = ["{context}", "{user message}"]
+    for ph in required_placeholders:
+        if ph not in config["system_prompt"]:
+            print(f"⚠️ Warning: Placeholder {ph} missing in system_prompt.")
 
     # Inject session-memory summary if enabled
     if config.get("enable_memory_summary"):
@@ -213,9 +219,7 @@ async def get_response(
 
 
     # Perform the .format() with the user_name
-    config["system_prompt"] = config["system_prompt"].format(
-        user_name=user_name, context="{context}", question="{question}"
-    )
+    config["system_prompt"] = config["system_prompt"].replace("{user_name}", user_name)
     print(f"[DEBUG] Final system prompt:\n{config['system_prompt']}")
 
 
@@ -223,11 +227,11 @@ async def get_response(
     # Invoke QA chain
     with get_openai_callback() as callback:
         qa_chain, retriever = get_qa_chain(config, chat_history)
-        retrieved_docs = await retriever.ainvoke(question)
+        retrieved_docs = await retriever.ainvoke(user_message)
         if not retrieved_docs and not allow_fallback:
             return {"answer": "No relevant information found.", "source_documents": [], "token_usage": 0, "cost_estimation": 0.0}
         result = await qa_chain.ainvoke(
-            {"question": question},
+            {"user message": user_message},
             config={"configurable": {"session_id": chat_id}},
         )
         result["source_documents"] = retrieved_docs
