@@ -66,7 +66,7 @@ class DummyChain:
         return {"answer": "ok"}
 
 class DummyRetriever:
-    def get_relevant_documents(self, question):
+    async def ainvoke(self, question):
         return []
 
 import asyncio

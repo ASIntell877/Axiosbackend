@@ -63,64 +63,38 @@ def extract_user_name(message: str) -> str | None:
     return None
 
 
-def summarize_recent_messages(history: ChatMessageHistory, max_messages: int = 5) -> str:
+async def summarize_recent_messages_with_llm(
+    history: ChatMessageHistory,
+    config: dict,
+    max_messages: int | None = None,
+) -> str:
+    options = config.get("memory_options", {})
+    if max_messages is None:
+        max_messages = options.get("summary_max_messages", 5)
     recent = history.messages[-max_messages:]
+    if not recent:
+        return ""
     lines = []
     for msg in recent:
-        role = (
-            "User" if isinstance(msg, HumanMessage) else "Assistant" if isinstance(msg, AIMessage) else "Other"
-        )
-        lines.append(f"{role}: {msg.content}")
-    summary = "\n".join(lines)
-    print(f"[MEMORY DEBUG] Generated summary:\n{summary}")
-    return summary
-
-def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base")
-    return len(encoding.encode(text))
-
-async def format_chat_history(chat_history: ChatMessageHistory, client_id: str, max_tokens: int = None) -> str:
-    """Format chat history based on client config, with a token cap."""
-    config = await get_client_config(client_id) or {}
-    options = config.get("memory_options", {})
-    if max_tokens is None:
-        max_tokens = options.get("max_memory_tokens", 700)
-
-    format_roles = options.get("format_roles", False)
-    filter_bot_only = options.get("filter_bot_only", False)
-    model_name = config.get("gpt_model", "gpt-3.5-turbo")
-    speaker_name = config.get("persona_name", "Assistant")
-
-    messages = chat_history.messages
-    if filter_bot_only:
-        messages = [m for m in messages if isinstance(m, AIMessage)]
-
-    formatted_lines = []
-    total_tokens = 0
-
-    # Iterate from most recent to oldest, and stop when you hit max tokens
-    for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
-            line = f"User: {msg.content}" if format_roles else msg.content
+            role = "User"
         elif isinstance(msg, AIMessage):
-            line = f"{speaker_name}: {msg.content}" if format_roles else msg.content
+            role = config.get("persona_name", "Assistant")
         elif isinstance(msg, SystemMessage):
-            line = f"System: {msg.content}" if format_roles else msg.content
+            role = "System"
         else:
-            continue
-
-        tokens = count_tokens(line, model=model_name)
-
-        if total_tokens + tokens > max_tokens:
-            break
-
-        formatted_lines.insert(0, line)  # Add to the beginning since we're reversing
-        total_tokens += tokens
-
-    return "\n".join(formatted_lines)
+            role = "Other"
+        lines.append(f"{role}: {msg.content}")
+    prompt = "Summarize the following conversation briefly:\n" + "\n".join(lines)
+    llm = ChatOpenAI(
+        model_name=config.get("gpt_model"),
+        openai_api_key=config.get("openai_api_key"),
+        temperature=0.0,
+    )
+    result = await llm.ainvoke(prompt)
+    summary = getattr(result, "content", str(result))
+    print(f"[MEMORY DEBUG] Generated LLM summary:\n{summary}")
+    return summary
 
 
 
@@ -223,13 +197,13 @@ async def get_response(
 
     # Inject session-memory summary if enabled
     if config.get("enable_memory_summary"):
-        formatted_history = await format_chat_history(chat_history, client_id)
-        if formatted_history:
+        summary = await summarize_recent_messages_with_llm(chat_history, config)
+        if summary:
             config["system_prompt"] = (
-                f"Recent conversation:\n{formatted_history}\n\n"
+                f"Recent conversation summary:\n{summary}\n\n"
                 f"{config['system_prompt']}"
             )
-            print("[MEMORY DEBUG] Injected formatted chat history into system_prompt")
+            print("[MEMORY DEBUG] Injected conversation summary into system_prompt")
     user_name = "my friend" # attempt to pull name from session memory, default to "my friend"
     for msg in chat_history.messages:
         if isinstance(msg, SystemMessage) and "identified themselves as" in msg.content:
