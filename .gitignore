@@ -50,3 +50,5 @@ edit_client_redis.py
 load_configs_redis.py
 view_client_redis.py
 bulk_edit_redis_client.py
+bulk_prompt_edit_redis.py
+replace_system_prompt_redis.py
