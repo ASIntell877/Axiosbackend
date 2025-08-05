@@ -85,7 +85,12 @@ async def summarize_recent_messages_with_llm(
         else:
             role = "Other"
         lines.append(f"{role}: {msg.content}")
-    prompt = "Summarize the following conversation briefly:\n" + "\n".join(lines)
+    prompt = (
+        "Summarize the following conversation briefly.\n"
+        "If the user's name is known, include it in the summary and remind the assistant to refer to the user by name in future responses.\n"
+        + "\n".join(lines)
+    )
+
     llm = ChatOpenAI(
         model_name=config.get("gpt_model"),
         openai_api_key=config.get("openai_api_key"),
