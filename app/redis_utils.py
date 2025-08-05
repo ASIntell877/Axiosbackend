@@ -23,9 +23,23 @@ async def get_last_seen(client_id: str, chat_id: str) -> datetime | None:
         return datetime.fromisoformat(raw)
     return None
 
-SESSION_TIMEOUT = timedelta(minutes=30)
+DEFAULT_SESSION_TIMEOUT = timedelta(minutes=30)
+
+async def get_session_timeout(client_id: str) -> timedelta:
+    """Return the session timeout for a client as a timedelta."""
+    cfg = await get_client_config(client_id)
+    minutes = None
+    if cfg:
+        minutes = cfg.get("session_timeout_minutes")
+    if minutes is None:
+        return DEFAULT_SESSION_TIMEOUT
+    try:
+        return timedelta(minutes=int(minutes))
+    except (TypeError, ValueError):
+        return DEFAULT_SESSION_TIMEOUT
+
 async def set_last_seen(client_id: str, chat_id: str, when: datetime):
-    ttl_seconds = int(SESSION_TIMEOUT.total_seconds())
+    ttl_seconds = int((await get_session_timeout(client_id)).total_seconds())
     await r.setex(f"ls:{client_id}:{chat_id}", ttl_seconds, when.isoformat())
 
 async def get_persona(client_id):

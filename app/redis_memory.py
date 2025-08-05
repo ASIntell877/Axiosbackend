@@ -16,7 +16,7 @@ if not hasattr(LCChatHistory, "add_user_message"):
 else:
     ChatMessageHistory = LCChatHistory
     
-from .redis_utils import r, SESSION_TIMEOUT
+from .redis_utils import r, get_session_timeout
 
 
 def _make_key(client_id: str, chat_id: str) -> str:
@@ -26,7 +26,7 @@ def _make_key(client_id: str, chat_id: str) -> str:
 async def save_memory(client_id: str, chat_id: str, chat_history: ChatMessageHistory) -> None:
     """Persist chat history to Redis as raw strings with expiration."""
     key = _make_key(client_id, chat_id)
-    ttl_seconds = int(SESSION_TIMEOUT.total_seconds())
+    ttl_seconds = int((await get_session_timeout(client_id)).total_seconds())
     pipe = r.pipeline()
     pipe.delete(key)
     for msg in chat_history.messages:

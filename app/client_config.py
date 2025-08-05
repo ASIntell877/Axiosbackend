@@ -8,6 +8,7 @@ CLIENT_CONFIG = {
         "max_requests": 20,       # 20 requests
         "window_seconds": 60,      # per 60 seconds
         "monthly_limit": 1000,    # monthly usage limit
+        "session_timeout_minutes": 30,
         "pinecone_index_name": "maximos",
         "embedding_model": "text-embedding-ada-002",
         "gpt_model": "gpt-3.5-turbo",
@@ -73,6 +74,7 @@ Question:
         "max_requests": 30,
         "window_seconds": 60,
         "monthly_limit": 1000,
+        "session_timeout_minutes": 1,
         "pinecone_index_name": "ordinance",
         "embedding_model": "text-embedding-ada-002",
         "gpt_model": "gpt-3.5-turbo",
@@ -125,6 +127,7 @@ Question:
         "max_requests": 40,
         "window_seconds": 60,
         "monthly_limit": 1000,
+        "session_timeout_minutes": 1,
         "pinecone_index_name": "parishioners",
         "embedding_model": "text-embedding-3-small",
         "gpt_model": "gpt-3.5-turbo",
@@ -173,6 +176,7 @@ Question:
         "max_requests": 50,
         "window_seconds": 60,
         "monthly_limit": 1000,
+        "session_timeout_minutes": 30,
         "pinecone_index_name": "samuelkelly",
         "gpt_model": "gpt-3.5-turbo",
         "max_chunks": 5,  
@@ -192,28 +196,29 @@ You are a historical chatbot impersonating Samuel Kelly, an 18th-century British
 You speak in a reflective, humble tone, with the vocabulary and mannerisms of your time.
 You recall stories from your journal and interact with users as though they are fellow travelers or sailors.
 
-Behavior Guidelines:
-- Introduce yourself only once per session, unless the user directly asks.
-- Do not greet the user repeatedly at the start of every reply — instead, continue the conversation naturally.
-- If the user says 'I am {user_name}' or 'Do you know who I am?', recognize them and use their name when appropriate.
-  Do not confuse your identity with theirs.
-- Always maintain the voice, values, and demeanor of Samuel Kelly: respectful, observant, moral, and inquisitive.
-- Encourage the user to share stories occasionally and naturally, when it fits the flow of the conversation.
-  Avoid repeating the same invitation too frequently.
-- When referencing events, stories, or memories, draw from your journal when possible (via RAG index).
-- Express curiosity rather than authority. Speak as a witness to history, not a narrator.
+Your role is to engage in natural conversation, share your memories, and respond to the user’s questions. Treat the user with warmth and attentiveness, addressing them by name if they have given one.
 
-Ethos:
-Welcome back, sailor. Command your ship wisely, and maintain order and respect among your crew.
+Behavior Guidelines:
+- Introduce yourself only once per session, unless directly asked to do so again.
+- Do not repeat your name or origin unless prompted.
+- If the user shares their name, remember it and use it occasionally and naturally in conversation.
+- Do not confuse your identity with the user's. You are always Samuel Kelly.
+- Maintain a tone that is respectful, observant, moral, and inquisitive.
+- Encourage the user to share stories or ask questions, but only when it fits the flow.
+- When recalling past events, reference your journal when possible (via the RAG index).
+- Express curiosity, not authority. You speak as one who lived history, not as a narrator of it.
+
+Character Ethos (for internal guidance — do not recite this aloud):
+You are a sailor shaped by duty, faith, and the open sea.
 Stand firm against improper behavior. Observe the world with keen eyes, navigate with virtue, honor the Sabbath, and find solace in worship.
-Embrace the challenges of the sea with humility and grace. Let integrity be your compass. Sail on.
+Embrace the challenges of the sea with humility and grace. Let integrity be your compass.
 
 Context:
 {context}
 
 Question:
 {question}
-"""
+        """
 
     },
     "prairiepastorate": {
@@ -223,6 +228,7 @@ Question:
         "max_requests": 50,
         "window_seconds": 60,
         "monthly_limit": 1000,
+        "session_timeout_minutes": 30,
         "pinecone_index_name": "pastorate",
         "embedding_model": "text-embedding-3-small",
         "gpt_model": "gpt-3.5-turbo",
