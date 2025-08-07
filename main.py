@@ -22,9 +22,10 @@ from app.redis_utils import r
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from app.redis_utils import increment_token_usage
+from typing import Literal
 import httpx  # For proxy requests
 from app.redis_memory import delete_memory
-from app.redis_utils import get_last_seen, set_last_seen, store_vote, append_event
+from app.redis_utils import get_last_seen, set_last_seen
 from app.chatbot import get_response
 from app.chatbot import get_memory, save_redis_memory, is_memory_enabled
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
@@ -115,7 +116,7 @@ class FeedbackRequest(BaseModel):
     client_id: str
     message_id: str
     user_id: str
-    vote: str
+    vote: Literal["up", "down"]
 
 
 # Get persona info endpoint
@@ -415,6 +416,10 @@ async def submit_feedback(
     await validate_client_id(req.client_id)
     if api_key_info["client"] != req.client_id:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    cfg = await get_client_config(req.client_id)
+    if not cfg or not cfg.get("enable_feedback", True):
+        raise HTTPException(status_code=403, detail="Feedback disabled")
 
     vote_recorded = await record_feedback_vote(
         req.client_id, req.message_id, req.user_id, req.vote

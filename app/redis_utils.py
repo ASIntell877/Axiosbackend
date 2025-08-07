@@ -206,39 +206,37 @@ async def record_feedback_vote(
 ) -> bool:
     """Record a feedback vote for a specific user and message.
 
-    Uses a Redis hash ``feedback:{client_id}:{message_id}`` where each field is a
-    ``user_id``. ``HSETNX`` ensures that a user may only vote once per message.
-
-    Returns ``True`` if the vote was recorded, ``False`` if the user has already
-    voted on this message.
+    Uses HSETNX on a Redis hash to dedupe one vote per user/message.
+    Returns True if recorded, False if the user already voted.
     """
+    if vote not in {"up", "down"}:
+        raise ValueError("vote must be 'up' or 'down'")
 
-    key = f"feedback:{client_id}:{message_id}"
-    # hsetnx returns 1 if field is a new field in the hash and value was set.
-    return bool(await r.hsetnx(key, user_id, vote))
-
+    # Hash key: one per client and message
+    hash_key = f"feedback:{client_id}:{message_id}"
+    # HSETNX returns 1 if new field created
+    recorded = bool(await r.hsetnx(hash_key, user_id, vote))
+    if recorded:
+        # Optional TTL: expire votes after 30 days
+        await r.expire(hash_key, 60 * 60 * 24 * 30)
+    return recorded
 
 async def append_feedback_event(
     client_id: str,
     message_id: str,
     user_id: str,
     vote: str,
-    stream_name: str = "feedback_stream",
-):
-    """Append a feedback event to a Redis stream for analytics.
-
-    ``xadd`` writes a new event to ``stream_name`` capturing metadata about the
-    vote so that downstream consumers can process it later.
-    """
-
+) -> None:
+    """Append a feedback event to a namespaced Redis stream for analytics."""
+    stream_key = f"feedback_stream:{client_id}"
     event = {
-        "client": client_id,
-        "message": message_id,
-        "user": user_id,
+        "message_id": message_id,
+        "user_id": user_id,
         "vote": vote,
         "timestamp": datetime.utcnow().isoformat(),
     }
-    await r.xadd(stream_name, event)
+    # maxlen ensures the stream doesn’t grow unbounded
+    await r.xadd(stream_key, event, maxlen=100_000, approximate=True)
 
     
 

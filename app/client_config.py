@@ -17,6 +17,7 @@ CLIENT_CONFIG = {
         "allow_gpt_fallback": True,
         "enable_user_naming": True,
         "enable_memory_summary": True,
+        "enable_feedback": False,
         "memory_options": {
         "format_roles": True,
         "filter_bot_only": True,
@@ -83,6 +84,7 @@ Question:
         "allow_gpt_fallback": False,
         "enable_user_naming": False,
         "enable_memory_summary": False,
+        "enable_feedback": True,
         "memory_options": {
         "format_roles": False,
         "filter_bot_only": False,  # or True if you want only his replies summarized
@@ -136,6 +138,7 @@ Question:
         "allow_gpt_fallback": True,
         "enable_user_naming": False,
         "enable_memory_summary": False,
+        "enable_feedback": False,
         "memory_options": {
         "format_roles": False,
         "filter_bot_only": False,
@@ -184,6 +187,7 @@ Question:
         "allow_gpt_fallback": True,
         "enable_user_naming": True,
         "enable_memory_summary": True,
+        "enable_feedback": False,
         "memory_options": {
         "format_roles": True,
         "filter_bot_only": False,
@@ -237,6 +241,7 @@ Question:
         "allow_gpt_fallback": True,
         "enable_user_naming": False,
         "enable_memory_summary": True,
+        "enable_feedback": True,
         "memory_options": {
         "format_roles": False,
         "filter_bot_only": False,
