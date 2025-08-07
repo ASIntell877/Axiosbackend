@@ -196,3 +196,79 @@ async def get_all_client_configs() -> dict:
             except json.JSONDecodeError:
                 pass
     return configs
+
+
+async def record_feedback_vote(
+    client_id: str,
+    message_id: str,
+    user_id: str,
+    vote: str,
+) -> bool:
+    """Record a feedback vote for a specific user and message.
+
+    Uses a Redis hash ``feedback:{client_id}:{message_id}`` where each field is a
+    ``user_id``. ``HSETNX`` ensures that a user may only vote once per message.
+
+    Returns ``True`` if the vote was recorded, ``False`` if the user has already
+    voted on this message.
+    """
+
+    key = f"feedback:{client_id}:{message_id}"
+    # hsetnx returns 1 if field is a new field in the hash and value was set.
+    return bool(await r.hsetnx(key, user_id, vote))
+
+
+async def append_feedback_event(
+    client_id: str,
+    message_id: str,
+    user_id: str,
+    vote: str,
+    stream_name: str = "feedback_stream",
+):
+    """Append a feedback event to a Redis stream for analytics.
+
+    ``xadd`` writes a new event to ``stream_name`` capturing metadata about the
+    vote so that downstream consumers can process it later.
+    """
+
+    event = {
+        "client": client_id,
+        "message": message_id,
+        "user": user_id,
+        "vote": vote,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    await r.xadd(stream_name, event)
+
+    
+
+async def store_vote(
+    client_id: str,
+    chat_id: str,
+    message_id: str,
+    user_id: str,
+    vote: str,
+    reasons: list[str] | None = None,
+) -> None:
+    """Persist a user's vote for a chat message.
+
+    The vote is stored in a hash keyed by ``feedback:{client_id}:{chat_id}``
+    where each field is the ``message_id``.  The value is a JSON payload
+    containing the ``user_id``, ``vote`` and optional ``reasons``.
+    """
+    key = f"feedback:{client_id}:{chat_id}"
+    payload = {
+        "message_id": message_id,
+        "user_id": user_id,
+        "vote": vote,
+        "reasons": reasons or [],
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    await r.hset(key, message_id, json.dumps(payload))
+
+
+async def append_event(client_id: str, event: dict) -> None:
+    """Append an arbitrary event for a client to Redis."""
+    key = f"events:{client_id}"
+    event = {"timestamp": datetime.utcnow().isoformat(), **event}
+    await r.rpush(key, json.dumps(event))

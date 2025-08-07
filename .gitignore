@@ -52,3 +52,5 @@ view_client_redis.py
 bulk_edit_redis_client.py
 bulk_prompt_edit_redis.py
 replace_system_prompt_redis.py
+scripts/chunk_text_past_alias.py
+scripts/embed_upsert_ordinance_alias.py

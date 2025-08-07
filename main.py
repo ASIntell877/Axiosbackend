@@ -1,4 +1,5 @@
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,12 +24,19 @@ from pydantic import BaseModel
 from app.redis_utils import increment_token_usage
 import httpx  # For proxy requests
 from app.redis_memory import delete_memory
-from app.redis_utils import get_last_seen, set_last_seen
+from app.redis_utils import get_last_seen, set_last_seen, store_vote, append_event
 from app.chatbot import get_response
 from app.chatbot import get_memory, save_redis_memory, is_memory_enabled
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
-from app.redis_utils import get_persona, save_chat_message
-from app.redis_utils import get_token_usage, get_client_config, get_all_client_configs
+from app.redis_utils import (
+    get_persona,
+    save_chat_message,
+    get_token_usage,
+    get_client_config,
+    get_all_client_configs,
+    record_feedback_vote,
+    append_feedback_event,
+)
 from recaptcha import verify_recaptcha  # Your recaptcha verification function
 from ratelimit import check_rate_limit, track_usage
 from slowapi import Limiter
@@ -101,6 +109,13 @@ class ChatRequest(BaseModel):
     client_id: str
     question: str
     recaptcha_token: str
+
+
+class FeedbackRequest(BaseModel):
+    client_id: str
+    message_id: str
+    user_id: str
+    vote: str
 
 
 # Get persona info endpoint
@@ -385,3 +400,30 @@ async def proxy_chat(request: Request):
     except Exception as e:
         print(f"Internal proxy error: {e}")
         raise HTTPException(status_code=500, detail="Internal proxy error")
+
+
+@app.post("/feedback")
+async def submit_feedback(
+    req: FeedbackRequest, api_key_info: dict = Depends(verify_api_key)
+):
+    """Record user feedback for a specific message.
+
+    Ensures that each user may vote once per message using ``HSETNX`` and logs the
+    event to a Redis stream for later analytics.
+    """
+
+    await validate_client_id(req.client_id)
+    if api_key_info["client"] != req.client_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    vote_recorded = await record_feedback_vote(
+        req.client_id, req.message_id, req.user_id, req.vote
+    )
+    if not vote_recorded:
+        raise HTTPException(status_code=409, detail="User already voted")
+
+    await append_feedback_event(
+        req.client_id, req.message_id, req.user_id, req.vote
+    )
+
+    return {"status": "recorded"}
