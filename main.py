@@ -433,3 +433,61 @@ async def submit_feedback(
     print(f"[FEEDBACK_RECORDED] client={req.client_id} message_id={req.message_id} user_id={req.user_id} vote={req.vote}")
 
     return {"status": "recorded"}
+
+# ---------- Proxy History ----------
+class ProxyHistoryRequest(BaseModel):
+    client_id: str
+    chat_id: str
+    recaptcha_token: str
+
+@limiter.limit("30/minute")
+@app.post("/proxy-history")
+async def proxy_history(req: ProxyHistoryRequest):
+    if not await verify_recaptcha(req.recaptcha_token):
+        raise HTTPException(status_code=403, detail="reCAPTCHA verification failed")
+
+    cfg = await get_client_config(req.client_id)
+    if not cfg:
+        raise HTTPException(status_code=400, detail="Unknown client")
+
+    if not await is_memory_enabled(req.client_id):
+        return {"history": []}
+
+    history_obj = await get_memory(req.chat_id, req.client_id)
+    msgs = [
+        {"role": "assistant" if m.type == "ai" else "user", "text": m.content}
+        for m in history_obj.messages
+    ]
+    return {"history": msgs}
+
+
+# ---------- Proxy Feedback ----------
+class ProxyFeedbackRequest(BaseModel):
+    client_id: str
+    message_id: str
+    user_id: str
+    vote: Literal["up", "down"]
+    recaptcha_token: str
+
+@limiter.limit("30/minute")
+@app.post("/proxy-feedback")
+async def proxy_feedback(req: ProxyFeedbackRequest):
+    if not await verify_recaptcha(req.recaptcha_token):
+        raise HTTPException(status_code=403, detail="reCAPTCHA verification failed")
+
+    cfg = await get_client_config(req.client_id)
+    if not cfg:
+        raise HTTPException(status_code=400, detail="Unknown client")
+    if not cfg.get("enable_feedback", True):
+        raise HTTPException(status_code=403, detail="Feedback disabled")
+
+    vote_recorded = await record_feedback_vote(
+        req.client_id, req.message_id, req.user_id, req.vote
+    )
+    if not vote_recorded:
+        print(f"[FEEDBACK_DUPLICATE] client={req.client_id} message_id={req.message_id} user_id={req.user_id} vote={req.vote}")
+        raise HTTPException(status_code=409, detail="User already voted")
+
+    await append_feedback_event(req.client_id, req.message_id, req.user_id, req.vote)
+    print(f"[FEEDBACK_RECORDED] client={req.client_id} message_id={req.message_id} user_id={req.user_id} vote={req.vote}")
+    return {"status": "recorded"}
