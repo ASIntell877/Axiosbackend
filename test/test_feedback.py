@@ -34,7 +34,11 @@ class FakeRedis:
     async def hget(self, key, field):
         return self.hashes.get(key, {}).get(field)
 
-    async def xadd(self, stream, mapping):
+    async def expire(self, key, ttl):
+        # For testing purposes, expiration is a no-op
+        return True
+
+    async def xadd(self, stream, mapping, **kwargs):
         self.streams.setdefault(stream, []).append(mapping)
 
 
@@ -66,12 +70,11 @@ async def test_append_feedback_event(monkeypatch):
     monkeypatch.setattr(redis_utils, "r", fake)
 
     await redis_utils.append_feedback_event("c", "m", "u", "up")
-
-    assert "feedback_stream" in fake.streams
-    event = fake.streams["feedback_stream"][0]
-    assert event["client"] == "c"
-    assert event["message"] == "m"
-    assert event["user"] == "u"
+    stream_key = "feedback_stream:c"
+    assert stream_key in fake.streams
+    event = fake.streams[stream_key][0]
+    assert event["message_id"] == "m"
+    assert event["user_id"] == "u"
     assert event["vote"] == "up"
 
 

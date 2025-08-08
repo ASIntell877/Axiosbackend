@@ -434,6 +434,7 @@ async def submit_feedback(
 
     return {"status": "recorded"}
 
+
 # ---------- Proxy History ----------
 class ProxyHistoryRequest(BaseModel):
     client_id: str
@@ -442,7 +443,7 @@ class ProxyHistoryRequest(BaseModel):
 
 @limiter.limit("30/minute")
 @app.post("/proxy-history")
-async def proxy_history(req: ProxyHistoryRequest):
+async def proxy_history(req: ProxyHistoryRequest, request: Request):
     if not await verify_recaptcha(req.recaptcha_token):
         raise HTTPException(status_code=403, detail="reCAPTCHA verification failed")
 
@@ -471,7 +472,7 @@ class ProxyFeedbackRequest(BaseModel):
 
 @limiter.limit("30/minute")
 @app.post("/proxy-feedback")
-async def proxy_feedback(req: ProxyFeedbackRequest):
+async def proxy_feedback(req: ProxyFeedbackRequest, request: Request):
     if not await verify_recaptcha(req.recaptcha_token):
         raise HTTPException(status_code=403, detail="reCAPTCHA verification failed")
 
