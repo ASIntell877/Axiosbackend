@@ -430,5 +430,6 @@ async def submit_feedback(
     await append_feedback_event(
         req.client_id, req.message_id, req.user_id, req.vote
     )
+    print(f"[FEEDBACK_RECORDED] client={req.client_id} message_id={req.message_id} user_id={req.user_id} vote={req.vote}")
 
     return {"status": "recorded"}
