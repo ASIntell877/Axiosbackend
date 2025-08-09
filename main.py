@@ -117,7 +117,17 @@ class FeedbackRequest(BaseModel):
     message_id: str
     user_id: str
     vote: Literal["up", "down"]
+    reason: str | None = None
 
+# --- helpers ---
+def normalize_reason(text: str | None) -> str | None:
+    """Trim and cap the free-text reason to a safe length."""
+    if text is None:
+        return None
+    t = text.strip()
+    if not t:
+        return None
+    return t[:500]  # keep it short-ish
 
 # Get persona info endpoint
 @app.get("/persona/{client_id}")
@@ -407,12 +417,12 @@ async def proxy_chat(request: Request):
 async def submit_feedback(
     req: FeedbackRequest, api_key_info: dict = Depends(verify_api_key)
 ):
-    """Record user feedback for a specific message.
+    """
+    Record user feedback for a specific message.
 
-    Ensures that each user may vote once per message using ``HSETNX`` and logs the
+    Ensures that each user may vote once per message using HSETNX and logs the
     event to a Redis stream for later analytics.
     """
-
     await validate_client_id(req.client_id)
     if api_key_info["client"] != req.client_id:
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -421,16 +431,24 @@ async def submit_feedback(
     if not cfg or not cfg.get("enable_feedback", True):
         raise HTTPException(status_code=403, detail="Feedback disabled")
 
+    reason = normalize_reason(req.reason)
+
+    # record + dedupe
     vote_recorded = await record_feedback_vote(
-        req.client_id, req.message_id, req.user_id, req.vote
+        req.client_id, req.message_id, req.user_id, req.vote, reason=reason
     )
     if not vote_recorded:
         raise HTTPException(status_code=409, detail="User already voted")
 
+    # stream event (analytics)
     await append_feedback_event(
-        req.client_id, req.message_id, req.user_id, req.vote
+        req.client_id, req.message_id, req.user_id, req.vote, reason=reason
     )
-    print(f"[FEEDBACK_RECORDED] client={req.client_id} message_id={req.message_id} user_id={req.user_id} vote={req.vote}")
+
+    print(
+        f"[FEEDBACK_RECORDED] client={req.client_id} message_id={req.message_id} "
+        f"user_id={req.user_id} vote={req.vote} reason={reason!r}"
+    )
 
     return {"status": "recorded"}
 
@@ -469,6 +487,7 @@ class ProxyFeedbackRequest(BaseModel):
     user_id: str
     vote: Literal["up", "down"]
     recaptcha_token: str
+    reason: str | None = None
 
 @limiter.limit("30/minute")
 @app.post("/proxy-feedback")
@@ -482,13 +501,24 @@ async def proxy_feedback(req: ProxyFeedbackRequest, request: Request):
     if not cfg.get("enable_feedback", True):
         raise HTTPException(status_code=403, detail="Feedback disabled")
 
+    reason = normalize_reason(req.reason)
+
     vote_recorded = await record_feedback_vote(
-        req.client_id, req.message_id, req.user_id, req.vote
+        req.client_id, req.message_id, req.user_id, req.vote, reason=reason
     )
     if not vote_recorded:
-        print(f"[FEEDBACK_DUPLICATE] client={req.client_id} message_id={req.message_id} user_id={req.user_id} vote={req.vote}")
+        print(
+            f"[FEEDBACK_DUPLICATE] client={req.client_id} message_id={req.message_id} "
+            f"user_id={req.user_id} vote={req.vote}"
+        )
         raise HTTPException(status_code=409, detail="User already voted")
 
-    await append_feedback_event(req.client_id, req.message_id, req.user_id, req.vote)
-    print(f"[FEEDBACK_RECORDED] client={req.client_id} message_id={req.message_id} user_id={req.user_id} vote={req.vote}")
+    await append_feedback_event(
+        req.client_id, req.message_id, req.user_id, req.vote, reason=reason
+    )
+
+    print(
+        f"[FEEDBACK_RECORDED] client={req.client_id} message_id={req.message_id} "
+        f"user_id={req.user_id} vote={req.vote} reason={reason!r}"
+    )
     return {"status": "recorded"}

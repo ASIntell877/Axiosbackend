@@ -203,21 +203,30 @@ async def record_feedback_vote(
     message_id: str,
     user_id: str,
     vote: str,
+    *,
+    reason: str | None = None,
 ) -> bool:
     """Record a feedback vote for a specific user and message.
 
     Uses HSETNX on a Redis hash to dedupe one vote per user/message.
+    Value is a JSON payload so we can store reason + timestamp.
     Returns True if recorded, False if the user already voted.
     """
     if vote not in {"up", "down"}:
         raise ValueError("vote must be 'up' or 'down'")
 
-    # Hash key: one per client and message
     hash_key = f"feedback:{client_id}:{message_id}"
-    # HSETNX returns 1 if new field created
-    recorded = bool(await r.hsetnx(hash_key, user_id, vote))
+
+    payload = {
+        "vote": vote,
+        "reason": (reason or "").strip()[:500],
+        "ts": int(time.time()),
+    }
+
+    # HSETNX returns 1 if new field created (i.e., first vote by this user)
+    recorded = bool(await r.hsetnx(hash_key, user_id, json.dumps(payload)))
     if recorded:
-        # Optional TTL: expire votes after 30 days
+        # Optional TTL: expire after 30 days
         await r.expire(hash_key, 60 * 60 * 24 * 30)
     return recorded
 
@@ -226,6 +235,8 @@ async def append_feedback_event(
     message_id: str,
     user_id: str,
     vote: str,
+    *,
+    reason: str | None = None,
 ) -> None:
     """Append a feedback event to a namespaced Redis stream for analytics."""
     stream_key = f"feedback_stream:{client_id}"
@@ -233,6 +244,7 @@ async def append_feedback_event(
         "message_id": message_id,
         "user_id": user_id,
         "vote": vote,
+        "reason": (reason or "").strip()[:500],
         "timestamp": datetime.utcnow().isoformat(),
     }
     # maxlen ensures the stream doesn’t grow unbounded
